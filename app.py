@@ -23,15 +23,59 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- CSS 样式 ---
+# --- CSS 样式 (UI 优化核心) ---
 st.markdown("""
 <style>
+    /* 全局字体优化 */
     .main-header { font-size: 2.0rem; color: #2c3e50; font-weight: bold; margin-bottom: 5px; }
     .sub-header { font-size: 1.0rem; color: #7f8c8d; margin-bottom: 20px; }
     .developer-credit { font-size: 0.85rem; color: #95a5a6; margin-top: 50px; border-top: 1px solid #bdc3c7; padding-top: 10px; }
+    
+    /* 侧边栏一级标题样式 */
+    .sidebar-h1 {
+        font-size: 18px !important;
+        font-weight: 700 !important;
+        color: #000000 !important;
+        margin-top: 20px !important;
+        margin-bottom: 10px !important;
+        white-space: nowrap !important; /* 强制不换行 */
+    }
+    
+    /* 侧边栏二级标题样式 (作为 Label) */
+    .sidebar-h2 {
+        font-size: 15px !important;
+        font-weight: 700 !important;
+        color: #444444 !important;
+        margin-top: 10px !important;
+        margin-bottom: 2px !important; /* 紧贴下方控件 */
+        white-space: nowrap !important; /* 强制不换行 */
+    }
+
+    /* 调整 Radio 和 Input 的正文样式 */
+    div[data-testid="stRadio"] label p {
+        font-size: 13px !important;
+        font-weight: 400 !important; /* 不加粗 */
+    }
+    div[data-testid="stTextInput"] input {
+        font-size: 13px !important;
+        font-weight: 400 !important;
+    }
+    
+    /* 隐藏 Streamlit 默认的上边距，让自定义标题和控件更紧凑 */
+    div[data-testid="stRadio"], div[data-testid="stTextInput"], div[data-testid="stDateInput"] {
+        margin-top: -15px;
+    }
+    
     div[data-testid="stFileUploader"] { margin-top: 20px; }
 </style>
 """, unsafe_allow_html=True)
+
+# --- 辅助函数：渲染自定义侧边栏标题 ---
+def render_h1(text):
+    st.sidebar.markdown(f"<div class='sidebar-h1'>{text}</div>", unsafe_allow_html=True)
+
+def render_h2(text):
+    st.sidebar.markdown(f"<div class='sidebar-h2'>{text}</div>", unsafe_allow_html=True)
 
 # --- Session State ---
 if 'analysis_result' not in st.session_state:
@@ -58,8 +102,8 @@ def add_styled_paragraph(doc, text, bold=False, size=11, is_bullet=False, indent
     clean_content = clean_text(str(text))
     p = doc.add_paragraph()
     p.paragraph_format.line_spacing = 1.0
-    p.paragraph_format.space_before = Pt(2)
-    p.paragraph_format.space_after = Pt(2)
+    p.paragraph_format.space_before = Pt(3)
+    p.paragraph_format.space_after = Pt(3)
     p.alignment = WD_ALIGN_PARAGRAPH.LEFT 
     
     # --- 悬挂缩进逻辑 (Strict Hanging Indent) ---
@@ -271,7 +315,6 @@ class InterviewAnalyzer:
     def analyze_interview(self, audio_resource, mode):
         # 框架定义
         if mode == "commercial":
-            # 🚨 修改：根据用户要求精确定义
             keys_instruction = """
             Use these EXACT keys for `structured_analysis`:
             - `company_sales` (for Interviewed Manufacturer's Sales Performance)
@@ -396,7 +439,6 @@ class InterviewAnalyzer:
 # --- UI 主程序 ---
 with st.sidebar:
     st.title("Clearstate AI")
-    # Removed Caption
     
     st.markdown("""
     <div class='developer-credit'>
@@ -408,12 +450,16 @@ with st.sidebar:
     
     api_key = st.text_input("Gemini API Key", type="password")
     
-    st.markdown("### Task Mode / 任务模式")
+    # --- 任务模式 (Level 1) ---
+    render_h1("Task Mode / 任务模式")
     
+    # Select Mode (Level 2)
+    render_h2("Select Mode / 选择模式")
     task_mode = st.radio(
-        "Select Mode / 选择模式",
+        "Select Mode", # Hidden Label
         ("interview", "meeting"),
-        format_func=lambda x: "Expert Interview (专家访谈)" if x == "interview" else "Meeting Minutes (会议纪要)"
+        format_func=lambda x: "Expert Interview (专家访谈)" if x == "interview" else "Meeting Minutes (会议纪要)",
+        label_visibility="collapsed"
     )
     
     # 初始化
@@ -423,25 +469,48 @@ with st.sidebar:
     interview_mode = "meeting" 
     
     if task_mode == "interview":
-        st.markdown("### Project Info / 项目信息")
-        company_name = st.text_input("Company / 公司名称", placeholder="e.g. Medtronic")
-        product_name = st.text_input("Product / 产品领域", placeholder="e.g. Stapler")
-        interview_date = st.date_input("Date / 访谈日期", datetime.date.today())
+        # --- 项目信息 (Level 1) ---
+        render_h1("Project Info / 项目信息")
         
-        st.markdown("### Interviewee Type / 访谈对象")
+        # Company (Level 2)
+        render_h2("Company / 公司名称")
+        company_name = st.text_input("Company", placeholder="e.g. Medtronic", label_visibility="collapsed")
+        
+        # Product (Level 2)
+        render_h2("Product / 产品领域")
+        product_name = st.text_input("Product", placeholder="e.g. Stapler", label_visibility="collapsed")
+        
+        # Date (Level 2)
+        render_h2("Date / 访谈日期")
+        interview_date = st.date_input("Date", datetime.date.today(), label_visibility="collapsed")
+        
+        # --- 访谈对象 (Level 1) ---
+        render_h1("Interviewee Type / 访谈对象")
+        
+        # Select Type (Level 2)
+        render_h2("Select Type / 选择类型")
         interview_sub_type = st.radio(
-            "Select Type / 选择类型",
+            "Select Type", # Hidden Label
             ("commercial", "clinical"),
-            format_func=lambda x: "Trade (商业/厂商)" if x == "commercial" else "Clinical (临床/专家)"
+            format_func=lambda x: "Trade (商业/厂商)" if x == "commercial" else "Clinical (临床/专家)",
+            label_visibility="collapsed"
         )
         interview_mode = interview_sub_type
         
     else: # Meeting Mode
-        st.markdown("### Meeting Info / 会议信息")
-        meeting_topic = st.text_input("Topic / 会议主题 (Optional)", placeholder="e.g. Weekly Sync")
-        interview_date = st.date_input("Date / 会议日期", datetime.date.today())
+        # --- 会议信息 (Level 1) ---
+        render_h1("Meeting Info / 会议信息")
+        
+        # Topic (Level 2)
+        render_h2("Topic / 会议主题")
+        meeting_topic = st.text_input("Topic", placeholder="e.g. Weekly Sync", label_visibility="collapsed")
+        
+        # Date (Level 2)
+        render_h2("Date / 会议日期")
+        interview_date = st.date_input("Date", datetime.date.today(), label_visibility="collapsed")
         interview_mode = "meeting"
 
+    st.markdown("<br>", unsafe_allow_html=True) # Spacer
     if st.button("Reset / 重置"):
         st.session_state['analysis_result'] = None
         st.rerun()
@@ -510,4 +579,3 @@ if st.session_state['analysis_result']:
     st.markdown("---")
     st.markdown("### Preview / 预览")
     st.write(res.get('executive_summary'))
-
