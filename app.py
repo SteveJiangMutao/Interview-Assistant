@@ -14,7 +14,7 @@ from google.api_core import retry
 
 # --- 🔧 配置项：Logo 文件 ---
 # 必须在 GitHub 仓库根目录上传名为 logo.jpg 的文件
-LOGO_PATH = "logo.jpg" 
+LOGO_PATH = "logo.png" 
 
 # --- 页面配置 ---
 st.set_page_config(
@@ -427,3 +427,4 @@ if st.session_state['analysis_result']:
     st.markdown("---")
     st.markdown("### 📊 Preview / 预览")
     st.write(res.get('executive_summary'))
+
