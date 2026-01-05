@@ -12,8 +12,9 @@ import io
 import datetime
 from google.api_core import retry
 
-# --- 🔧 配置项：内置 Logo 文件名 ---
-LOGO_PATH = "logo.png" 
+# --- 🔧 配置项：Logo 文件 ---
+# 必须在 GitHub 仓库根目录上传名为 logo.jpg 的文件
+LOGO_PATH = "logo.jpg" 
 
 # --- 页面配置 ---
 st.set_page_config(
@@ -37,15 +38,11 @@ st.markdown("""
 if 'analysis_result' not in st.session_state:
     st.session_state['analysis_result'] = None
 
-# --- 🧹 文本清洗函数 (去除 **) ---
+# --- 🧹 文本清洗函数 ---
 def clean_text(text):
-    """
-    去除 Markdown 格式符号，如 **bold**, ## header 等
-    """
+    """去除 Markdown 符号，保持文本纯净"""
     if isinstance(text, str):
-        # 去除加粗符号
         text = text.replace("**", "").replace("__", "")
-        # 去除标题符号
         text = text.replace("##", "").replace("###", "")
         return text.strip()
     return text
@@ -58,21 +55,26 @@ def set_font_style(run, font_size=11, bold=False):
     run.font.color.rgb = RGBColor(0, 0, 0)
     run.bold = bold
 
-def add_styled_paragraph(doc, text, bold=False, size=11):
-    # 先清洗文本
+def add_styled_paragraph(doc, text, bold=False, size=11, is_bullet=False):
     clean_content = clean_text(str(text))
-    
     p = doc.add_paragraph()
     p.paragraph_format.line_spacing = 1.0
     p.paragraph_format.space_before = Pt(3)
     p.paragraph_format.space_after = Pt(3)
     p.alignment = WD_ALIGN_PARAGRAPH.LEFT 
     
+    # --- 悬挂缩进逻辑 (Hanging Indent) ---
+    if is_bullet:
+        # 整体向右缩进 0.25 英寸
+        p.paragraph_format.left_indent = Inches(0.25)
+        # 首行向左回退 0.25 英寸 (抵消整体缩进，使圆点位于左侧，文字对齐)
+        p.paragraph_format.first_line_indent = Inches(-0.25)
+    
     run = p.add_run(clean_content)
     set_font_style(run, font_size=size, bold=bold)
     return p
 
-# --- 🌍 标题映射字典 (确保语言一致性) ---
+# --- 🌍 标题映射字典 ---
 SECTION_HEADERS = {
     "commercial": {
         "zh": {
@@ -112,27 +114,27 @@ SECTION_HEADERS = {
 def generate_word_report(data, company, product, date, mode):
     doc = Document()
     
-    # 0. Logo
+    # 0. Logo (右上角, 高度 1cm)
     section = doc.sections[0]
     header = section.header
     p_header = header.paragraphs[0]
     p_header.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    
     if os.path.exists(LOGO_PATH):
         try:
             run_header = p_header.add_run()
             run_header.add_picture(LOGO_PATH, height=Cm(1.0))
-        except: pass
-
-    # 获取语言 (默认英文以防万一)
+        except Exception as e:
+            print(f"Logo Error: {e}")
+    
+    # 语言判断
     lang = data.get('language', 'en')
-    # 简单的语言标准化
     if 'zh' in lang.lower() or 'chinese' in lang.lower() or 'cn' in lang.lower():
         lang_code = 'zh'
     else:
         lang_code = 'en'
 
-    # 1. 标题
-    # 根据语言生成对应的标题
+    # 1. 标题与基础信息
     if lang_code == 'zh':
         title_text = f"{company} - {product} 访谈记录"
         type_text = '商业/厂商' if mode == 'commercial' else '临床/专家'
@@ -142,7 +144,7 @@ def generate_word_report(data, company, product, date, mode):
         other_title = "3. 其他发现"
     else:
         title_text = f"{company} - {product} Interview Record"
-        type_text = 'Commercial/Industry' if mode == 'commercial' else 'Clinical/Expert'
+        type_text = 'Commercial/Trade' if mode == 'commercial' else 'Clinical/Expert'
         date_prefix = "Date"
         type_prefix = "Type"
         exec_title = "1. Executive Summary"
@@ -154,28 +156,25 @@ def generate_word_report(data, company, product, date, mode):
     run_title = p_title.add_run(title_text)
     set_font_style(run_title, font_size=16, bold=True)
     
-    # 2. Meta Info
+    # Meta Info
     info_text = f"{date_prefix}: {date} | {type_prefix}: {type_text}"
     add_styled_paragraph(doc, info_text, size=10.5, bold=False)
     doc.add_paragraph("-" * 80)
 
-    # 3. Executive Summary
+    # 2. Executive Summary
     add_styled_paragraph(doc, exec_title, size=14, bold=True)
     summary = data.get('executive_summary', '')
     add_styled_paragraph(doc, summary, size=11)
 
-    # 4. Structured Analysis
-    # 动态获取对应的标题映射
+    # 3. Structured Analysis
     header_map = SECTION_HEADERS.get(mode, {}).get(lang_code, {})
-    
-    # 只有当 structured_analysis 存在时才写大标题
     structured = data.get('structured_analysis', {})
+    
     if structured:
-        # 大标题
         section_2_title = "2. 详细维度分析" if lang_code == 'zh' else "2. Detailed Analysis"
         add_styled_paragraph(doc, section_2_title, size=14, bold=True)
 
-        # 遍历固定的 Key 顺序 (保证文档逻辑顺序，而不是随机顺序)
+        # 强制顺序
         key_order = []
         if mode == 'commercial':
             key_order = ['market_size', 'competition', 'sales_marketing', 'channel_access', 'trends']
@@ -185,30 +184,27 @@ def generate_word_report(data, company, product, date, mode):
         for key in key_order:
             if key in structured:
                 points = structured[key]
-                # 获取映射后的标题，如果没有则用 Key 代替
                 display_title = header_map.get(key, key.title())
-                
                 add_styled_paragraph(doc, display_title, size=12, bold=True)
                 
                 if isinstance(points, list):
                     for point in points:
-                        p = add_styled_paragraph(doc, f"• {point}", size=11)
-                        p.paragraph_format.left_indent = Inches(0.25)
+                        # 启用悬挂缩进 (is_bullet=True)
+                        # 手动添加 Bullet 符号，然后利用格式控制对齐
+                        add_styled_paragraph(doc, f"• {point}", size=11, is_bullet=True)
                 else:
                     add_styled_paragraph(doc, str(points), size=11)
 
-    # 5. Other Findings
+    # 4. Other Findings
     other_dims = data.get('other_dimensions', {})
     if other_dims:
         add_styled_paragraph(doc, other_title, size=14, bold=True)
         for k, v in other_dims.items():
-            # 清洗 Key 中的 markdown
             clean_k = clean_text(k)
             add_styled_paragraph(doc, clean_k, size=12, bold=True)
             if isinstance(v, list):
                 for point in v:
-                    p = add_styled_paragraph(doc, f"• {point}", size=11)
-                    p.paragraph_format.left_indent = Inches(0.25)
+                    add_styled_paragraph(doc, f"• {point}", size=11, is_bullet=True)
             else:
                 add_styled_paragraph(doc, str(v), size=11)
 
@@ -223,6 +219,7 @@ class InterviewAnalyzer:
         self.api_key = api_key
         try:
             genai.configure(api_key=self.api_key)
+            # 强制使用 gemini-3-pro-preview
             self.model = genai.GenerativeModel('gemini-3-pro-preview') 
         except Exception as e:
             st.error(f"API Error: {e}")
@@ -243,7 +240,7 @@ class InterviewAnalyzer:
             return None
 
     def analyze_interview(self, audio_resource, mode):
-        # 定义固定的 JSON Key，方便 Python 代码映射标题
+        # 框架定义
         if mode == "commercial":
             keys_instruction = """
             Use these EXACT keys for `structured_analysis`:
@@ -287,10 +284,11 @@ class InterviewAnalyzer:
             - If English: Output ALL content in English.
             - **Set the `language` field in JSON to "zh" or "en".**
         2.  **NO MARKDOWN**: Do NOT use bolding marks (like **text**) in the JSON values. Output plain text only.
-        3.  **NO TRANSLATION OF NAMES**: 
-            - Do NOT translate brand names or technical terms (e.g., do NOT change "MicroPort" to "微创" or "Angiography Guidewire" to "造影导丝" unless spoken that way). 
-            - Use the exact term used by the expert. 
-            - Do NOT add parenthetical translations like "Name (Translation)".
+        3.  **STRICTLY NO TRANSLATION OF NAMES**: 
+            - **KEEP IT VERBATIM**. 
+            - If the expert says "Medtronic", write "Medtronic". Do NOT write "Medtronic (美敦力)".
+            - If the expert says "Stapler", write "Stapler". Do NOT write "Stapler (吻合器)".
+            - Do not add any parenthetical translations for company names, products, or technical terms.
         4.  **DATA PRECISION**: Capture EVERY number. Provide logic formulas for calculations.
         5.  **INTEGRATION**: Fit information into the main framework.
 
@@ -360,8 +358,8 @@ with st.sidebar:
     api_key = st.text_input("Gemini API Key", type="password")
     
     st.markdown("### 📝 Project Info / 项目信息")
-    company_name = st.text_input("Company / 公司名称", placeholder="e.g. Medtronic / 美敦力")
-    product_name = st.text_input("Product / 产品领域", placeholder="e.g. Stapler / 吻合器")
+    company_name = st.text_input("Company / 公司名称", placeholder="e.g. Medtronic")
+    product_name = st.text_input("Product / 产品领域", placeholder="e.g. Stapler")
     interview_date = st.date_input("Date / 访谈日期", datetime.date.today())
     
     st.markdown("### 🛠️ Mode / 模式")
