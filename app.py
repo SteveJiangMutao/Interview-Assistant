@@ -129,7 +129,7 @@ class InterviewAnalyzer:
         try:
             genai.configure(api_key=self.api_key)
             # 💡 修复点1: 使用 1.5 Flash 稳定版，避免 Experimental 版本的连接不稳定性
-            self.model = genai.GenerativeModel('gemini-1.5-flash') 
+            self.model = genai.GenerativeModel('gemini-2.5-flash') 
         except Exception as e:
             st.error(f"API 配置错误: {e}")
 
@@ -296,3 +296,4 @@ if st.session_state['analysis_result']:
     st.markdown("---")
     st.markdown("### 📊 网页版预览")
     st.write(res.get('executive_summary'))
+
