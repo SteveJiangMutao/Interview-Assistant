@@ -17,7 +17,7 @@ LOGO_PATH = "logo.png"
 
 # --- 页面配置 ---
 st.set_page_config(
-    page_title="Clearstate Interview System",
+    page_title="Clearstate Insight Assistant",
     layout="wide",
     page_icon="🧬",
     initial_sidebar_state="expanded"
@@ -207,7 +207,6 @@ def generate_word_report(data, company, product, date, mode, meeting_topic=""):
     if structured:
         key_order = []
         if mode == 'commercial':
-            # 🚨 修改：更新后的商业访谈顺序
             key_order = ['company_sales', 'sales_marketing', 'channel_strategy', 'org_structure', 'competition', 'trends']
         elif mode == 'clinical':
             key_order = ['clinical_value', 'adoption', 'competition', 'pain_points', 'expectations']
@@ -272,21 +271,21 @@ class InterviewAnalyzer:
     def analyze_interview(self, audio_resource, mode):
         # 框架定义
         if mode == "commercial":
-            # 🚨 修改：商业访谈新框架
+            # 🚨 修改：根据用户要求精确定义
             keys_instruction = """
             Use these EXACT keys for `structured_analysis`:
             - `company_sales` (for Interviewed Manufacturer's Sales Performance)
             - `sales_marketing` (for Sales & Marketing Strategy)
-            - `channel_strategy` (for Sales Channel Strategy)
-            - `org_structure` (for Organizational Structure & Personnel)
+            - `channel_strategy` (for Sales Channel Strategy - Distributor Focus)
+            - `org_structure` (for Organizational Structure & Personnel - Internal Teams)
             - `competition` (for Competition Landscape)
             - `trends` (for Industry Trends)
             """
             framework_desc = """
             1. Company Sales Performance: Specific sales volume, revenue, and growth of the INTERVIEWED company. (Capture all numbers).
             2. Sales & Marketing Strategy: Pricing, promotion, bidding, and marketing activities.
-            3. Sales Channel Strategy: Distribution model, dealer management, hospital access/admission.
-            4. Organizational Structure: Department setup, headcount, personnel changes, new divisions.
+            3. Sales Channel Strategy: **DISTRIBUTOR MANAGEMENT ONLY**. Distribution model (agency vs platform), dealer selection, dealer management policies, and channel incentives.
+            4. Organizational Structure: **INTERNAL TEAMS**. Headcount, scale, and changes specifically in **Sales Dept, Marketing Dept, and Product Dept**. (e.g., "Sales team has 50 people", "Marketing expanded by 20%").
             5. Competition Landscape: Market shares of competitors, strengths/weaknesses vs competitors.
             6. Industry Trends: Policy impact, macro environment.
             """
@@ -397,12 +396,11 @@ class InterviewAnalyzer:
 # --- UI 主程序 ---
 with st.sidebar:
     st.title("Clearstate AI")
-    st.caption("Intelligent Qualitative Interview System")
+    # Removed Caption
     
     st.markdown("""
     <div class='developer-credit'>
-    Developed by <b>Steve Jiang</b><br>
-    Clearstate Consulting
+    Developed by <b>Steve Jiang</b>, Clearstate
     </div>
     """, unsafe_allow_html=True)
     
@@ -410,12 +408,12 @@ with st.sidebar:
     
     api_key = st.text_input("Gemini API Key", type="password")
     
-    st.markdown("### 🛠️ Task Mode / 任务模式")
+    st.markdown("### Task Mode / 任务模式")
     
     task_mode = st.radio(
         "Select Mode / 选择模式",
         ("interview", "meeting"),
-        format_func=lambda x: "🎤 Expert Interview (专家访谈)" if x == "interview" else "🤝 Meeting Minutes (会议纪要)"
+        format_func=lambda x: "Expert Interview (专家访谈)" if x == "interview" else "Meeting Minutes (会议纪要)"
     )
     
     # 初始化
@@ -425,33 +423,33 @@ with st.sidebar:
     interview_mode = "meeting" 
     
     if task_mode == "interview":
-        st.markdown("### 📝 Project Info / 项目信息")
+        st.markdown("### Project Info / 项目信息")
         company_name = st.text_input("Company / 公司名称", placeholder="e.g. Medtronic")
         product_name = st.text_input("Product / 产品领域", placeholder="e.g. Stapler")
         interview_date = st.date_input("Date / 访谈日期", datetime.date.today())
         
-        st.markdown("### 👤 Interviewee Type / 访谈对象")
+        st.markdown("### Interviewee Type / 访谈对象")
         interview_sub_type = st.radio(
             "Select Type / 选择类型",
             ("commercial", "clinical"),
-            format_func=lambda x: "🏭 Trade (商业/厂商)" if x == "commercial" else "👨‍⚕️ Clinical (临床/专家)"
+            format_func=lambda x: "Trade (商业/厂商)" if x == "commercial" else "Clinical (临床/专家)"
         )
         interview_mode = interview_sub_type
         
     else: # Meeting Mode
-        st.markdown("### 📝 Meeting Info / 会议信息")
+        st.markdown("### Meeting Info / 会议信息")
         meeting_topic = st.text_input("Topic / 会议主题 (Optional)", placeholder="e.g. Weekly Sync")
         interview_date = st.date_input("Date / 会议日期", datetime.date.today())
         interview_mode = "meeting"
 
-    if st.button("🗑️ Reset / 重置"):
+    if st.button("Reset / 重置"):
         st.session_state['analysis_result'] = None
         st.rerun()
 
-st.markdown('<div class="main-header">智能定性访谈报告生成系统</div>', unsafe_allow_html=True)
-st.markdown('<div class="sub-header">Intelligent Qualitative Interview Report Generation System</div>', unsafe_allow_html=True)
+st.markdown('<div class="main-header">智能市场洞察项目辅助工具</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-header">Intelligent Market Insight Assistant</div>', unsafe_allow_html=True)
 
-uploaded_file = st.file_uploader("📂 Upload Audio / 上传录音 (MP3/M4A Recommended)", type=['mp3', 'wav', 'm4a'])
+uploaded_file = st.file_uploader("Upload Audio / 上传录音 (MP3/M4A Recommended)", type=['mp3', 'wav', 'm4a'])
 
 if uploaded_file and st.session_state['analysis_result'] is None:
     if not api_key:
@@ -465,31 +463,31 @@ if uploaded_file and st.session_state['analysis_result'] is None:
         
         if valid_input:
             st.audio(uploaded_file, format='audio/mp3')
-            if st.button("🚀 Start Analysis (Gemini 3 Pro)", type="primary"):
+            if st.button("Start Analysis (Gemini 3 Pro)", type="primary"):
                 analyzer = InterviewAnalyzer(api_key)
                 
                 with tempfile.NamedTemporaryFile(delete=False, suffix=f".{uploaded_file.name.split('.')[-1]}") as tmp_file:
                     tmp_file.write(uploaded_file.getvalue())
                     tmp_file_path = tmp_file.name
 
-                with st.status("🤖 AI is processing... / AI 正在处理...", expanded=True) as status:
-                    st.write("🎧 Uploading audio to Gemini... / 正在上传音频...")
+                with st.status("AI is processing... / AI 正在处理...", expanded=True) as status:
+                    st.write("Uploading audio to Gemini... / 正在上传音频...")
                     audio_resource = analyzer.process_audio(tmp_file_path)
                     
                     if audio_resource:
-                        st.write("🧠 Analyzing (Model: gemini-3-pro-preview)... / 正在分析...")
+                        st.write("Analyzing (Model: gemini-3-pro-preview)... / 正在分析...")
                         result = analyzer.analyze_interview(audio_resource, interview_mode)
                         
                         if result:
                             st.session_state['analysis_result'] = result
-                            status.update(label="✅ Done! / 完成！", state="complete", expanded=False)
+                            status.update(label="Done! / 完成！", state="complete", expanded=False)
                             os.remove(tmp_file_path)
                             st.rerun()
 
 if st.session_state['analysis_result']:
     res = st.session_state['analysis_result']
     
-    st.success("✅ Analysis Complete. Please download the report. / 分析完成，请下载报告。")
+    st.success("Analysis Complete. Please download the report. / 分析完成，请下载报告。")
     
     file_date_str = interview_date.strftime("%Y%m%d")
     
@@ -502,7 +500,7 @@ if st.session_state['analysis_result']:
     docx_file = generate_word_report(res, company_name, product_name, interview_date, interview_mode, meeting_topic)
     
     st.download_button(
-        label=f"📥 Download Word Report / 下载 Word 报告",
+        label=f"Download Word Report / 下载 Word 报告",
         data=docx_file,
         file_name=file_name,
         mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -510,5 +508,5 @@ if st.session_state['analysis_result']:
     )
 
     st.markdown("---")
-    st.markdown("### 📊 Preview / 预览")
+    st.markdown("### Preview / 预览")
     st.write(res.get('executive_summary'))
