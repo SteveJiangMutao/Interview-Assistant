@@ -23,7 +23,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- CSS 样式 (UI 优化核心) ---
+# --- CSS 样式 (深度间距修复) ---
 st.markdown("""
 <style>
     /* 全局字体优化 */
@@ -31,39 +31,68 @@ st.markdown("""
     .sub-header { font-size: 1.0rem; color: #7f8c8d; margin-bottom: 20px; }
     .developer-credit { font-size: 0.85rem; color: #95a5a6; margin-top: 50px; border-top: 1px solid #bdc3c7; padding-top: 10px; }
     
-    /* 侧边栏一级标题样式 */
+    /* --- 侧边栏排版系统 --- */
+
+    /* 1. 一级标题 (Level 1) */
     .sidebar-h1 {
+        font-family: "Source Sans Pro", sans-serif;
         font-size: 18px !important;
         font-weight: 700 !important;
         color: #000000 !important;
-        margin-top: 20px !important;
-        margin-bottom: 10px !important;
-        white-space: nowrap !important; /* 强制不换行 */
+        margin-top: 35px !important;   /* 大模块之间拉开距离 */
+        margin-bottom: 10px !important; /* 标题与下方内容保持适度距离 */
+        white-space: nowrap !important;
+        line-height: 1.4 !important;
     }
     
-    /* 侧边栏二级标题样式 (作为 Label) */
+    /* 2. 二级标题 (Level 2 - Label) */
     .sidebar-h2 {
+        font-family: "Source Sans Pro", sans-serif;
         font-size: 15px !important;
         font-weight: 700 !important;
-        color: #444444 !important;
-        margin-top: 10px !important;
-        margin-bottom: 2px !important; /* 紧贴下方控件 */
-        white-space: nowrap !important; /* 强制不换行 */
+        color: #31333F !important;
+        margin-top: 15px !important;   /* 与上一个输入框拉开距离 */
+        margin-bottom: -15px !important; /* 核心：负边距，强行拉近与下方输入框的距离 */
+        white-space: nowrap !important;
+        line-height: 1.2 !important;
+        z-index: 1; /* 确保文字在图层上方 */
+        position: relative;
     }
 
-    /* 调整 Radio 和 Input 的正文样式 */
+    /* 3. 正文控件 (Radio/Input) 样式覆写 */
+    
+    /* Radio 按钮文字 */
     div[data-testid="stRadio"] label p {
-        font-size: 13px !important;
-        font-weight: 400 !important; /* 不加粗 */
-    }
-    div[data-testid="stTextInput"] input {
-        font-size: 13px !important;
-        font-weight: 400 !important;
+        font-size: 14px !important;
+        font-weight: 600 !important; /* 补加粗 */
+        color: #31333F !important;
     }
     
-    /* 隐藏 Streamlit 默认的上边距，让自定义标题和控件更紧凑 */
-    div[data-testid="stRadio"], div[data-testid="stTextInput"], div[data-testid="stDateInput"] {
-        margin-top: -15px;
+    /* 输入框内部文字 */
+    div[data-testid="stTextInput"] input {
+        font-size: 14px !important;
+        font-weight: 600 !important; /* 补加粗 */
+        color: #31333F !important;
+    }
+    
+    /* 日期选择器文字 */
+    div[data-testid="stDateInput"] input {
+        font-size: 14px !important;
+        font-weight: 600 !important; /* 补加粗 */
+    }
+
+    /* 4. 消除 Streamlit 默认的大边距 */
+    /* 这一步非常关键，去掉控件自带的 margin，完全由我们的 H1/H2 控制节奏 */
+    div[data-testid="stRadio"], 
+    div[data-testid="stTextInput"], 
+    div[data-testid="stDateInput"] {
+        margin-top: 0px !important;
+        margin-bottom: 0px !important;
+    }
+    
+    /* 针对第一个元素的特殊处理，防止顶部太挤 */
+    .block-container {
+        padding-top: 2rem;
     }
     
     div[data-testid="stFileUploader"] { margin-top: 20px; }
