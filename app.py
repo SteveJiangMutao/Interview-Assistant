@@ -13,9 +13,9 @@ from google.api_core import retry
 
 # --- 页面配置 ---
 st.set_page_config(
-    page_title="ConsultAI Pro (Uncensored)",
+    page_title="ConsultAI Pro (Robust)",
     layout="wide",
-    page_icon="🔓",
+    page_icon="🛡️",
     initial_sidebar_state="expanded"
 )
 
@@ -32,24 +32,32 @@ st.markdown("""
 if 'analysis_result' not in st.session_state:
     st.session_state['analysis_result'] = None
 
-# --- Word 生成函数 (保持不变) ---
+# --- Word 生成函数 (已修复 KeyError) ---
 def generate_word_report(data, company, product, date, mode):
     doc = Document()
+    
+    # 1. 标题
     title_text = f"{company} - {product} 访谈记录"
     heading = doc.add_heading(title_text, 0)
     heading.alignment = WD_ALIGN_PARAGRAPH.CENTER
     
+    # 2. 基础信息
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     run = p.add_run(f"访谈时间: {date} | 访谈类型: {'商业/厂商' if mode == 'commercial' else '临床/专家'}")
     run.italic = True
     run.font.color.rgb = RGBColor(100, 100, 100)
+    
     doc.add_paragraph("-" * 50).alignment = WD_ALIGN_PARAGRAPH.CENTER
 
+    # 3. 执行摘要
     doc.add_heading('1. 执行摘要 (Executive Summary)', level=1)
-    doc.add_paragraph(data.get('executive_summary', '无摘要内容'))
+    # 使用 .get 防止报错
+    doc.add_paragraph(data.get('executive_summary', '（AI 未生成摘要）'))
 
+    # 4. 结构化维度分析
     doc.add_heading('2. 结构化维度分析', level=1)
+    
     comm_map = {
         "Market Size & Scale": "2.1 市场规模与体量",
         "Competition Landscape": "2.2 竞争格局",
@@ -67,38 +75,65 @@ def generate_word_report(data, company, product, date, mode):
         "Expectations": "2.6 专家预期与展望"
     }
     current_map = comm_map if mode == "commercial" else clin_map
+    
     structured = data.get('structured_analysis', {})
     
-    for eng_key, cn_title in current_map.items():
-        found_key = None
-        for k in structured.keys():
-            if eng_key.lower() in k.lower().replace("_", " "):
-                found_key = k
-                break
-        if found_key:
-            doc.add_heading(cn_title, level=2)
-            for point in structured[found_key]:
-                doc.add_paragraph(point, style='List Bullet')
+    # 遍历写入
+    if structured:
+        for eng_key, cn_title in current_map.items():
+            found_key = None
+            for k in structured.keys():
+                if eng_key.lower() in k.lower().replace("_", " "):
+                    found_key = k
+                    break
+            
+            if found_key:
+                doc.add_heading(cn_title, level=2)
+                # 确保内容是列表
+                points = structured[found_key]
+                if isinstance(points, list):
+                    for point in points:
+                        doc.add_paragraph(str(point), style='List Bullet')
+                else:
+                    doc.add_paragraph(str(points), style='List Bullet')
 
+    # 5. 其他维度
     other_dims = data.get('other_dimensions', {})
     if other_dims:
         doc.add_heading('3. 其他重要维度 (新发现)', level=1)
         for k, v in other_dims.items():
-            doc.add_heading(k, level=2)
-            for point in v:
-                doc.add_paragraph(point, style='List Bullet')
+            doc.add_heading(str(k), level=2)
+            if isinstance(v, list):
+                for point in v:
+                    doc.add_paragraph(str(point), style='List Bullet')
+            else:
+                doc.add_paragraph(str(v), style='List Bullet')
 
+    # 6. Q&A 实录 (重点修复区域)
     doc.add_heading('4. 访谈详细实录 (Q&A)', level=1)
     qa_log = data.get('qa_log', [])
-    for qa in qa_log:
-        p_q = doc.add_paragraph()
-        run_q = p_q.add_run(f"Q: {qa['question']}")
-        run_q.bold = True
-        run_q.font.color.rgb = RGBColor(0, 51, 102)
-        p_a = doc.add_paragraph(f"A: {qa['answer']}")
-        if qa.get('context_note'):
-            p_note = doc.add_paragraph(f"[注: {qa['context_note']}]")
-            p_note.style = 'Quote'
+    
+    if isinstance(qa_log, list):
+        for qa in qa_log:
+            # 🚨 修复：先检查 qa 是否为字典，再用 .get() 安全获取
+            if isinstance(qa, dict):
+                question = qa.get('question', '（未识别到问题）')
+                answer = qa.get('answer', '（未识别到回答）')
+                note = qa.get('context_note', None)
+
+                p_q = doc.add_paragraph()
+                run_q = p_q.add_run(f"Q: {question}")
+                run_q.bold = True
+                run_q.font.color.rgb = RGBColor(0, 51, 102)
+                
+                p_a = doc.add_paragraph(f"A: {answer}")
+                
+                if note:
+                    p_note = doc.add_paragraph(f"[注: {note}]")
+                    p_note.style = 'Quote'
+            else:
+                # 如果 AI 返回的不是字典结构，直接打印出来防止丢数据
+                doc.add_paragraph(f"Record: {str(qa)}")
 
     bio = io.BytesIO()
     doc.save(bio)
@@ -111,8 +146,7 @@ class InterviewAnalyzer:
         self.api_key = api_key
         try:
             genai.configure(api_key=self.api_key)
-            # 使用 1.5 Flash (最稳定)
-            self.model = genai.GenerativeModel('gemini-2.5-flash') 
+            self.model = genai.GenerativeModel('gemini-1.5-flash') 
         except Exception as e:
             st.error(f"API 配置错误: {e}")
 
@@ -132,7 +166,6 @@ class InterviewAnalyzer:
             return None
 
     def analyze_interview(self, audio_resource, mode):
-        # 1. 定义框架
         if mode == "commercial":
             framework_desc = """
             1. **Market Size & Scale**: Numbers, growth rates, TAM/SAM.
@@ -152,7 +185,6 @@ class InterviewAnalyzer:
             6. **Expectations**: What improvements do they want?
             """
 
-        # 2. 定义 Prompt
         system_prompt = f"""
         You are a Senior Strategy Consultant.
         Task: Extract a **Comprehensive Interview Record** from the audio.
@@ -186,50 +218,30 @@ class InterviewAnalyzer:
         **Language:** Simplified Chinese.
         """
         
-        # 3. 🚨 核心修复：关闭所有安全过滤器 🚨
+        # 安全设置：全放开
         safety_settings = [
-            {
-                "category": "HARM_CATEGORY_HARASSMENT",
-                "threshold": "BLOCK_NONE"
-            },
-            {
-                "category": "HARM_CATEGORY_HATE_SPEECH",
-                "threshold": "BLOCK_NONE"
-            },
-            {
-                "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-                "threshold": "BLOCK_NONE"
-            },
-            {
-                "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
-                "threshold": "BLOCK_NONE"
-            },
+            {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
         ]
         
         try:
-            # 调用 API，带上 safety_settings 和 timeout
             response = self.model.generate_content(
                 [audio_resource, system_prompt],
-                safety_settings=safety_settings, # 允许所有内容通过
-                request_options={"timeout": 600} # 允许 10 分钟超时
+                safety_settings=safety_settings,
+                request_options={"timeout": 600}
             )
             
-            # 检查是否因为其他原因被拦截
-            if response.prompt_feedback:
-                 if response.prompt_feedback.block_reason:
-                     st.warning(f"⚠️ 警告: 输入内容可能触发生存策略: {response.prompt_feedback.block_reason}")
-
-            # 尝试获取文本
             try:
                 text = response.text
                 if "```json" in text:
                     text = text.replace("```json", "").replace("```", "")
                 return json.loads(text.strip())
             except ValueError:
-                # 如果 response.text 依然报错，打印详细的 candidate 信息以便调试
                 st.error("❌ 模型生成被中断，未返回有效文本。")
-                st.write("Debug Info (Finish Reason):", response.candidates[0].finish_reason)
-                st.write("Debug Info (Safety Ratings):", response.candidates[0].safety_ratings)
+                if response.candidates:
+                    st.write("Debug Info:", response.candidates[0].finish_reason)
                 return None
 
         except Exception as e:
@@ -238,8 +250,8 @@ class InterviewAnalyzer:
 
 # --- UI 主程序 ---
 with st.sidebar:
-    st.title("🔓 ConsultAI Pro")
-    st.caption("Uncensored Version")
+    st.title("🛡️ ConsultAI Pro")
+    st.caption("Robust Version")
     api_key = st.text_input("Gemini API Key", type="password")
     
     st.markdown("### 📝 报告基础信息")
@@ -271,7 +283,7 @@ if uploaded_file and st.session_state['analysis_result'] is None:
         st.warning("⚠️ 请先在左侧侧边栏填写【公司名称】和【产品/领域】。")
     else:
         st.audio(uploaded_file, format='audio/mp3')
-        if st.button("🚀 开始分析 (无限制模式)", type="primary"):
+        if st.button("🚀 开始分析", type="primary"):
             analyzer = InterviewAnalyzer(api_key)
             
             with tempfile.NamedTemporaryFile(delete=False, suffix=f".{uploaded_file.name.split('.')[-1]}") as tmp_file:
@@ -283,7 +295,7 @@ if uploaded_file and st.session_state['analysis_result'] is None:
                 audio_resource = analyzer.process_audio(tmp_file_path)
                 
                 if audio_resource:
-                    st.write("🧠 正在提取结构化数据 (已关闭安全拦截)...")
+                    st.write("🧠 正在生成报告 (已开启容错模式)...")
                     result = analyzer.analyze_interview(audio_resource, interview_mode)
                     
                     if result:
@@ -301,6 +313,7 @@ if st.session_state['analysis_result']:
     file_date_str = interview_date.strftime("%Y%m%d")
     file_name = f"{company_name}_{product_name}_访谈记录_{file_date_str}.docx"
     
+    # 这里调用修复后的函数
     docx_file = generate_word_report(res, company_name, product_name, interview_date, interview_mode)
     
     st.download_button(
@@ -314,4 +327,3 @@ if st.session_state['analysis_result']:
     st.markdown("---")
     st.markdown("### 📊 网页版预览")
     st.write(res.get('executive_summary'))
-
