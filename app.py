@@ -9,12 +9,13 @@ from docx.shared import Pt, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 import io
 import datetime
+from google.api_core import retry # 引入重试机制
 
 # --- 页面配置 ---
 st.set_page_config(
-    page_title="ConsultAI Pro (Gemini 2.0)",
+    page_title="ConsultAI Pro (Stable)",
     layout="wide",
-    page_icon="⚡",
+    page_icon="🛡️",
     initial_sidebar_state="expanded"
 )
 
@@ -127,17 +128,17 @@ class InterviewAnalyzer:
         self.api_key = api_key
         try:
             genai.configure(api_key=self.api_key)
-            # 使用 Gemini 2.0 Flash Experimental
-            self.model = genai.GenerativeModel('gemini-2.5-pro') 
+            # 💡 修复点1: 使用 1.5 Flash 稳定版，避免 Experimental 版本的连接不稳定性
+            self.model = genai.GenerativeModel('gemini-1.5-flash') 
         except Exception as e:
             st.error(f"API 配置错误: {e}")
 
     def process_audio(self, audio_file_path):
         try:
             myfile = genai.upload_file(audio_file_path)
-            with st.spinner("⚡️ 正在使用 Gemini 2.0 Flash 极速解析音频..."):
+            with st.spinner("🎧 正在上传并解析音频 (Gemini 1.5 Flash)..."):
                 while myfile.state.name == "PROCESSING":
-                    time.sleep(1)
+                    time.sleep(2)
                     myfile = genai.get_file(myfile.name)
             if myfile.state.name == "FAILED":
                 st.error("音频解析失败。")
@@ -201,19 +202,26 @@ class InterviewAnalyzer:
         """
         
         try:
-            response = self.model.generate_content([audio_resource, system_prompt])
+            # 💡 修复点2: 增加 request_options 中的 timeout 设置
+            # 设置为 600 秒 (10分钟)，防止长录音分析时报 504 错误
+            response = self.model.generate_content(
+                [audio_resource, system_prompt],
+                request_options={"timeout": 600} 
+            )
+            
             text = response.text
             if "```json" in text:
                 text = text.replace("```json", "").replace("```", "")
             return json.loads(text.strip())
         except Exception as e:
-            st.error(f"分析错误: {e}")
+            # 捕获错误并显示给用户，而不是直接崩溃
+            st.error(f"分析过程中断 (可能是超时或网络问题): {e}")
             return None
 
 # --- UI 主程序 ---
 with st.sidebar:
-    st.title("⚡️ ConsultAI 2.0")
-    st.caption("Powered by Gemini 2.0 Flash")
+    st.title("🛡️ ConsultAI Pro")
+    st.caption("Stable Version (Fix 504)")
     api_key = st.text_input("Gemini API Key", type="password")
     
     st.markdown("### 📝 报告基础信息")
@@ -236,7 +244,7 @@ with st.sidebar:
 st.markdown(f'<div class="main-header">{company_name if company_name else "未命名公司"} - 访谈智能梳理系统</div>', unsafe_allow_html=True)
 
 # --- 上传区域 ---
-uploaded_file = st.file_uploader("📂 上传录音文件 (支持 MP3, WAV, M4A)", type=['mp3', 'wav', 'm4a'])
+uploaded_file = st.file_uploader("📂 上传录音文件 (建议 MP3/M4A，WAV 易超时)", type=['mp3', 'wav', 'm4a'])
 
 if uploaded_file and st.session_state['analysis_result'] is None:
     if not api_key:
@@ -245,19 +253,19 @@ if uploaded_file and st.session_state['analysis_result'] is None:
         st.warning("⚠️ 请先在左侧侧边栏填写【公司名称】和【产品/领域】。")
     else:
         st.audio(uploaded_file, format='audio/mp3')
-        if st.button("🚀 开始分析 (Gemini 2.0 Flash)", type="primary"):
+        if st.button("🚀 开始分析 (稳定版)", type="primary"):
             analyzer = InterviewAnalyzer(api_key)
             
             with tempfile.NamedTemporaryFile(delete=False, suffix=f".{uploaded_file.name.split('.')[-1]}") as tmp_file:
                 tmp_file.write(uploaded_file.getvalue())
                 tmp_file_path = tmp_file.name
 
-            with st.status("⚡️ AI 正在极速处理...", expanded=True) as status:
+            with st.status("🤖 AI 正在处理 (已开启长时等待模式)...", expanded=True) as status:
                 st.write("🎧 正在上传音频...")
                 audio_resource = analyzer.process_audio(tmp_file_path)
                 
                 if audio_resource:
-                    st.write("🧠 正在提取结构化数据...")
+                    st.write("🧠 正在提取结构化数据 (长录音可能需要 1-2 分钟，请耐心等待)...")
                     result = analyzer.analyze_interview(audio_resource, interview_mode)
                     
                     if result:
@@ -287,5 +295,4 @@ if st.session_state['analysis_result']:
 
     st.markdown("---")
     st.markdown("### 📊 网页版预览")
-
     st.write(res.get('executive_summary'))
