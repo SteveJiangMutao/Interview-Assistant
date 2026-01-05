@@ -83,18 +83,20 @@ def add_styled_paragraph(doc, text, bold=False, size=11, is_bullet=False, indent
 SECTION_HEADERS = {
     "commercial": {
         "zh": {
-            "market_size": "1. 市场规模与体量",
-            "competition": "2. 竞争格局",
-            "sales_marketing": "3. 销售与营销策略",
-            "channel_access": "4. 渠道与准入",
-            "trends": "5. 行业趋势"
+            "company_sales": "1. 厂家销售表现",
+            "sales_marketing": "2. 销售与营销策略",
+            "channel_strategy": "3. 销售渠道策略",
+            "org_structure": "4. 组织架构与人员",
+            "competition": "5. 竞争格局",
+            "trends": "6. 行业趋势"
         },
         "en": {
-            "market_size": "1. Market Size & Scale",
-            "competition": "2. Competition Landscape",
-            "sales_marketing": "3. Sales & Marketing Strategy",
-            "channel_access": "4. Channel & Access Strategy",
-            "trends": "5. Industry Trends"
+            "company_sales": "1. Company Sales Performance",
+            "sales_marketing": "2. Sales & Marketing Strategy",
+            "channel_strategy": "3. Sales Channel Strategy",
+            "org_structure": "4. Organizational Structure",
+            "competition": "5. Competition Landscape",
+            "trends": "6. Industry Trends"
         }
     },
     "clinical": {
@@ -156,12 +158,10 @@ def generate_word_report(data, company, product, date, mode, meeting_topic=""):
     # 1. 标题与基础信息
     if lang_code == 'zh':
         if mode == 'meeting':
-            # 会议模式标题逻辑
             main_title = meeting_topic if meeting_topic else "内部会议"
             title_text = f"{main_title} - 会议纪要"
             type_text = '会议/讨论'
         else:
-            # 访谈模式标题逻辑
             title_text = f"{company} - {product} 访谈记录"
             type_text = '商业/厂商' if mode == 'commercial' else '临床/专家'
             
@@ -194,7 +194,7 @@ def generate_word_report(data, company, product, date, mode, meeting_topic=""):
     add_styled_paragraph(doc, info_text, size=10.5, bold=False)
     doc.add_paragraph("-" * 80)
 
-    # 2. Executive Summary (无序号)
+    # 2. Executive Summary
     summary = data.get('executive_summary', '')
     if summary:
         add_styled_paragraph(doc, exec_title, size=14, bold=True)
@@ -205,10 +205,10 @@ def generate_word_report(data, company, product, date, mode, meeting_topic=""):
     structured = data.get('structured_analysis', {})
     
     if structured:
-        # 强制顺序
         key_order = []
         if mode == 'commercial':
-            key_order = ['market_size', 'competition', 'sales_marketing', 'channel_access', 'trends']
+            # 🚨 修改：更新后的商业访谈顺序
+            key_order = ['company_sales', 'sales_marketing', 'channel_strategy', 'org_structure', 'competition', 'trends']
         elif mode == 'clinical':
             key_order = ['clinical_value', 'adoption', 'competition', 'pain_points', 'expectations']
         elif mode == 'meeting':
@@ -272,20 +272,23 @@ class InterviewAnalyzer:
     def analyze_interview(self, audio_resource, mode):
         # 框架定义
         if mode == "commercial":
+            # 🚨 修改：商业访谈新框架
             keys_instruction = """
             Use these EXACT keys for `structured_analysis`:
-            - `market_size` (for Market Size & Scale)
+            - `company_sales` (for Interviewed Manufacturer's Sales Performance)
+            - `sales_marketing` (for Sales & Marketing Strategy)
+            - `channel_strategy` (for Sales Channel Strategy)
+            - `org_structure` (for Organizational Structure & Personnel)
             - `competition` (for Competition Landscape)
-            - `sales_marketing` (for Sales & Marketing)
-            - `channel_access` (for Channel & Access)
             - `trends` (for Industry Trends)
             """
             framework_desc = """
-            1. Market Size & Scale: Numbers, volume, revenue. (LOGIC FORMULA REQUIRED).
-            2. Competition Landscape: Shares, strengths, weaknesses.
-            3. Sales & Marketing: Pricing, promotion.
-            4. Channel & Access: Distributors, admission.
-            5. Industry Trends: Policy, macro environment.
+            1. Company Sales Performance: Specific sales volume, revenue, and growth of the INTERVIEWED company. (Capture all numbers).
+            2. Sales & Marketing Strategy: Pricing, promotion, bidding, and marketing activities.
+            3. Sales Channel Strategy: Distribution model, dealer management, hospital access/admission.
+            4. Organizational Structure: Department setup, headcount, personnel changes, new divisions.
+            5. Competition Landscape: Market shares of competitors, strengths/weaknesses vs competitors.
+            6. Industry Trends: Policy impact, macro environment.
             """
         elif mode == "clinical":
             keys_instruction = """
@@ -328,13 +331,22 @@ class InterviewAnalyzer:
             - If English: Output ALL content in English.
             - **Set the `language` field in JSON to "zh" or "en".**
         2.  **NO MARKDOWN**: Do NOT use bolding marks (like **text**) in the JSON values. Output plain text only.
-        3.  **STRICTLY NO TRANSLATION OF NAMES**: 
-            - **KEEP IT VERBATIM**. 
-            - Do NOT translate proper nouns (Company names, Product names, Technical terms).
-            - Do not add parenthetical translations.
-        4.  **COMPREHENSIVENESS**: 
+        
+        3.  **⛔️ STRICT ENTITY HANDLING (NO TRANSLATIONS)**: 
+            - **RULE**: NEVER add a translation in parentheses.
+            - **WRONG**: "泰尔茂 (Terumo)", "Medtronic (美敦力)".
+            - **RIGHT**: "泰尔茂", "Medtronic".
+            - **EXCEPTION**: Parentheses are ONLY allowed for **Product Models** (e.g., "乐普 (NeoVas)").
+
+        4.  **✅ PROFESSIONAL EDITING & GRAMMAR (VERY IMPORTANT)**:
+            - **Fix Spoken Errors**: Audio often contains broken grammar, slips of the tongue, or awkward phrasing.
+            - **CORRECTION REQUIRED**: You MUST correct these into standard, professional written language based on context.
+            - **Example**: Change "年轻患者、这害怕金属植入物患者" to "年轻患者及对金属植入物有顾虑的患者".
+            - **Goal**: The output must read like a polished consulting report, not a raw transcript.
+
+        5.  **COMPREHENSIVENESS**: 
             - For Interviews: Capture every number and logic.
-            - For Meetings: **Do not omit any discussion points or follow-ups.** Be very detailed.
+            - For Meetings: **Do not omit any discussion points or follow-ups.**
 
         ### FRAMEWORK KEYS:
         {keys_instruction}
@@ -400,20 +412,18 @@ with st.sidebar:
     
     st.markdown("### 🛠️ Task Mode / 任务模式")
     
-    # 1. 一级导航：选择任务类型
     task_mode = st.radio(
         "Select Mode / 选择模式",
         ("interview", "meeting"),
         format_func=lambda x: "🎤 Expert Interview (专家访谈)" if x == "interview" else "🤝 Meeting Minutes (会议纪要)"
     )
     
-    # 初始化变量
+    # 初始化
     company_name = ""
     product_name = ""
     meeting_topic = ""
-    interview_mode = "meeting" # 默认
+    interview_mode = "meeting" 
     
-    # 2. 动态显示输入框
     if task_mode == "interview":
         st.markdown("### 📝 Project Info / 项目信息")
         company_name = st.text_input("Company / 公司名称", placeholder="e.g. Medtronic")
@@ -430,7 +440,6 @@ with st.sidebar:
         
     else: # Meeting Mode
         st.markdown("### 📝 Meeting Info / 会议信息")
-        # 仅保留日期和可选的主题（用于文件名）
         meeting_topic = st.text_input("Topic / 会议主题 (Optional)", placeholder="e.g. Weekly Sync")
         interview_date = st.date_input("Date / 会议日期", datetime.date.today())
         interview_mode = "meeting"
@@ -448,7 +457,6 @@ if uploaded_file and st.session_state['analysis_result'] is None:
     if not api_key:
         st.error("Please enter API Key in the sidebar. / 请在侧边栏输入 API Key。")
     else:
-        # 校验逻辑：访谈模式下必须填公司和产品
         valid_input = True
         if task_mode == "interview":
             if not company_name or not product_name:
@@ -485,7 +493,6 @@ if st.session_state['analysis_result']:
     
     file_date_str = interview_date.strftime("%Y%m%d")
     
-    # 动态生成文件名
     if task_mode == "interview":
         file_name = f"Interview_{company_name}_{product_name}_{file_date_str}.docx"
     else:
