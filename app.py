@@ -144,7 +144,7 @@ class InterviewAnalyzer:
         self.api_key = api_key
         try:
             genai.configure(api_key=self.api_key)
-            self.model = genai.GenerativeModel('gemini-1.5-flash') 
+            self.model = genai.GenerativeModel('gemini-3-pro-preview') 
         except Exception as e:
             st.error(f"API Error: {e}")
 
@@ -342,3 +342,4 @@ if st.session_state['analysis_result']:
     st.markdown("---")
     st.markdown("### 📊 Preview / 预览")
     st.write(res.get('executive_summary'))
+
