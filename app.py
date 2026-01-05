@@ -58,8 +58,6 @@ st.markdown("""
     }
 
     /* 3. 强制清除 Streamlit 原生控件的默认上边距 */
-    /* 这是解决重叠和间距混乱的关键 */
-    
     div[data-testid="stRadio"], 
     div[data-testid="stTextInput"], 
     div[data-testid="stDateInput"] {
@@ -124,7 +122,8 @@ def add_styled_paragraph(doc, text, bold=False, size=11, is_bullet=False, indent
     p = doc.add_paragraph()
     p.paragraph_format.line_spacing = 1.0
     p.paragraph_format.space_before = Pt(3)
-    p.paragraph_format.space_after = Pt(3)
+    # [修改点 5] 段间距改为 2pt
+    p.paragraph_format.space_after = Pt(2) 
     p.alignment = WD_ALIGN_PARAGRAPH.LEFT 
     
     # --- 悬挂缩进逻辑 (Strict Hanging Indent) ---
@@ -136,12 +135,38 @@ def add_styled_paragraph(doc, text, bold=False, size=11, is_bullet=False, indent
         p.paragraph_format.first_line_indent = Inches(-base_indent)
         p.paragraph_format.tab_stops.add_tab_stop(Inches(total_indent), WD_TAB_ALIGNMENT.LEFT)
         
-        final_text = f"•\t{clean_content}"
-        run = p.add_run(final_text)
+        # 添加 Bullet 符号
+        run_bullet = p.add_run("•\t")
+        set_font_style(run_bullet, font_size=size, bold=bold)
+
+        # [修改点 6] 智能加粗逻辑：检测冒号
+        # 如果包含中文冒号或英文冒号，分割并加粗前半部分
+        if "：" in clean_content:
+            parts = clean_content.split("：", 1)
+            run_key = p.add_run(parts[0] + "：")
+            set_font_style(run_key, font_size=size, bold=True) # 冒号前加粗
+            
+            run_val = p.add_run(parts[1])
+            set_font_style(run_val, font_size=size, bold=False) # 冒号后正常
+            
+        elif ":" in clean_content:
+            parts = clean_content.split(":", 1)
+            run_key = p.add_run(parts[0] + ":")
+            set_font_style(run_key, font_size=size, bold=True) # 冒号前加粗
+            
+            run_val = p.add_run(parts[1])
+            set_font_style(run_val, font_size=size, bold=False) # 冒号后正常
+            
+        else:
+            # 没有冒号，正常输出
+            run = p.add_run(clean_content)
+            set_font_style(run, font_size=size, bold=bold)
+            
     else:
+        # 非 Bullet 段落，正常输出
         run = p.add_run(clean_content)
+        set_font_style(run, font_size=size, bold=bold)
     
-    set_font_style(run, font_size=size, bold=bold)
     return p
 
 # --- 🌍 标题映射字典 ---
@@ -295,8 +320,10 @@ def generate_word_report(data, company, product, date, mode, meeting_topic=""):
     if other_dims:
         add_styled_paragraph(doc, other_title, size=14, bold=True)
         for k, v in other_dims.items():
-            clean_k = clean_text(k)
-            add_styled_paragraph(doc, clean_k, size=12, bold=True)
+            # [修改点 3] 不再打印 Key (副标题)，直接打印 Value
+            # clean_k = clean_text(k)
+            # add_styled_paragraph(doc, clean_k, size=12, bold=True) <-- DELETED
+            
             if isinstance(v, list):
                 for point in v:
                     add_styled_paragraph(doc, point, size=11, is_bullet=True)
@@ -406,8 +433,14 @@ class InterviewAnalyzer:
             - **CORRECTION REQUIRED**: You MUST correct these into standard, professional written language based on context.
             - **Example**: Change "年轻患者、这害怕金属植入物患者" to "年轻患者及对金属植入物有顾虑的患者".
             - **Goal**: The output must read like a polished consulting report, not a raw transcript.
+        
+        5.  **TONE & STYLE (NO METAPHORS)**:
+            - **[修改点 4]**: Use direct, professional business language.
+            - **FORBIDDEN**: Do NOT use metaphors, slang, or dramatic expressions.
+            - **Example**: NEVER use "脚踝斩" (ankle chop). Use "价格大幅下降" (significant price drop) instead.
+            - **Example**: NEVER use "白菜价". Use "低价策略" instead.
 
-        5.  **COMPREHENSIVENESS**: 
+        6.  **COMPREHENSIVENESS**: 
             - For Interviews: Capture every number and logic.
             - For Meetings: **Do not omit any discussion points or follow-ups.**
 
@@ -459,7 +492,8 @@ class InterviewAnalyzer:
 
 # --- UI 主程序 ---
 with st.sidebar:
-    st.title("Clearstate AI")
+    # [修改点 1] 标题修改
+    st.title("Consulting AI")
     
     st.markdown("""
     <div class='developer-credit'>
@@ -536,7 +570,8 @@ with st.sidebar:
         st.session_state['analysis_result'] = None
         st.rerun()
 
-st.markdown('<div class="main-header">智能市场洞察项目辅助工具</div>', unsafe_allow_html=True)
+# [修改点 2] 主标题修改
+st.markdown('<div class="main-header">智能市场洞察辅助工具</div>', unsafe_allow_html=True)
 st.markdown('<div class="sub-header">Intelligent Market Insight Assistant</div>', unsafe_allow_html=True)
 
 uploaded_file = st.file_uploader("Upload Audio / 上传录音 (MP3/M4A Recommended)", type=['mp3', 'wav', 'm4a'])
