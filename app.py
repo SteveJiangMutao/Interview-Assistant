@@ -54,7 +54,7 @@ def set_font_style(run, font_size=11, bold=False):
     run.font.color.rgb = RGBColor(0, 0, 0)
     run.bold = bold
 
-def add_styled_paragraph(doc, text, bold=False, size=11, is_bullet=False):
+def add_styled_paragraph(doc, text, bold=False, size=11, is_bullet=False, indent_level=0):
     clean_content = clean_text(str(text))
     p = doc.add_paragraph()
     p.paragraph_format.line_spacing = 1.0
@@ -64,10 +64,12 @@ def add_styled_paragraph(doc, text, bold=False, size=11, is_bullet=False):
     
     # --- 悬挂缩进逻辑 (Strict Hanging Indent) ---
     if is_bullet:
-        indent_size = Inches(0.25)
-        p.paragraph_format.left_indent = indent_size
-        p.paragraph_format.first_line_indent = -indent_size
-        p.paragraph_format.tab_stops.add_tab_stop(indent_size, WD_TAB_ALIGNMENT.LEFT)
+        base_indent = 0.25
+        total_indent = base_indent + (indent_level * 0.25)
+        
+        p.paragraph_format.left_indent = Inches(total_indent)
+        p.paragraph_format.first_line_indent = Inches(-base_indent)
+        p.paragraph_format.tab_stops.add_tab_stop(Inches(total_indent), WD_TAB_ALIGNMENT.LEFT)
         
         final_text = f"•\t{clean_content}"
         run = p.add_run(final_text)
@@ -128,7 +130,7 @@ SECTION_HEADERS = {
 }
 
 # --- Word 生成逻辑 ---
-def generate_word_report(data, company, product, date, mode):
+def generate_word_report(data, company, product, date, mode, meeting_topic=""):
     doc = Document()
     
     # 0. Logo (右上角, 高度 0.65cm)
@@ -154,19 +156,23 @@ def generate_word_report(data, company, product, date, mode):
     # 1. 标题与基础信息
     if lang_code == 'zh':
         if mode == 'meeting':
-            title_text = f"{company} - {product} 会议纪要"
-            type_text = '内部会议/外部沟通'
+            # 会议模式标题逻辑
+            main_title = meeting_topic if meeting_topic else "内部会议"
+            title_text = f"{main_title} - 会议纪要"
+            type_text = '会议/讨论'
         else:
+            # 访谈模式标题逻辑
             title_text = f"{company} - {product} 访谈记录"
             type_text = '商业/厂商' if mode == 'commercial' else '临床/专家'
             
         date_prefix = "日期"
         type_prefix = "类型"
-        exec_title = "1. 摘要概览" if mode == 'meeting' else "1. 执行摘要"
-        other_title = "5. 其他补充" if mode == 'meeting' else "3. 其他发现"
+        exec_title = "摘要概览" if mode == 'meeting' else "执行摘要"
+        other_title = "其他补充" if mode == 'meeting' else "其他发现"
     else:
         if mode == 'meeting':
-            title_text = f"{company} - {product} Meeting Minutes"
+            main_title = meeting_topic if meeting_topic else "Internal Meeting"
+            title_text = f"{main_title} - Meeting Minutes"
             type_text = 'Meeting/Discussion'
         else:
             title_text = f"{company} - {product} Interview Record"
@@ -174,8 +180,8 @@ def generate_word_report(data, company, product, date, mode):
             
         date_prefix = "Date"
         type_prefix = "Type"
-        exec_title = "1. Executive Summary"
-        other_title = "3. Other Findings"
+        exec_title = "Overview" if mode == 'meeting' else "Executive Summary"
+        other_title = "Other Findings"
 
     p_title = doc.add_paragraph()
     p_title.alignment = WD_ALIGN_PARAGRAPH.LEFT
@@ -188,8 +194,7 @@ def generate_word_report(data, company, product, date, mode):
     add_styled_paragraph(doc, info_text, size=10.5, bold=False)
     doc.add_paragraph("-" * 80)
 
-    # 2. Executive Summary (For meeting, this is the Overview)
-    # 对于会议模式，如果 executive_summary 为空，则跳过
+    # 2. Executive Summary (无序号)
     summary = data.get('executive_summary', '')
     if summary:
         add_styled_paragraph(doc, exec_title, size=14, bold=True)
@@ -200,11 +205,6 @@ def generate_word_report(data, company, product, date, mode):
     structured = data.get('structured_analysis', {})
     
     if structured:
-        # 会议模式不需要 "Detailed Analysis" 这种大标题，直接进入 subsections
-        if mode != 'meeting':
-            section_2_title = "2. 详细维度分析" if lang_code == 'zh' else "2. Detailed Analysis"
-            add_styled_paragraph(doc, section_2_title, size=14, bold=True)
-
         # 强制顺序
         key_order = []
         if mode == 'commercial':
@@ -222,7 +222,7 @@ def generate_word_report(data, company, product, date, mode):
                 
                 if isinstance(points, list):
                     for point in points:
-                        add_styled_paragraph(doc, point, size=11, is_bullet=True)
+                        add_styled_paragraph(doc, point, size=11, is_bullet=True, indent_level=0)
                 else:
                     add_styled_paragraph(doc, str(points), size=11)
 
@@ -398,29 +398,43 @@ with st.sidebar:
     
     api_key = st.text_input("Gemini API Key", type="password")
     
-    st.markdown("### 📝 Project Info / 项目信息")
-    company_name = st.text_input("Company / 公司名称", placeholder="e.g. Medtronic")
-    product_name = st.text_input("Product / 产品领域", placeholder="e.g. Stapler")
-    interview_date = st.date_input("Date / 访谈日期", datetime.date.today())
+    st.markdown("### 🛠️ Task Mode / 任务模式")
     
-    st.markdown("### 🛠️ Interviewee Type / 访谈对象类型")
-    
-    # 映射 UI 显示名称
-    def format_mode(option):
-        if option == "commercial":
-            return "🏭 Trade (商业/厂商)"
-        elif option == "clinical":
-            return "👨‍⚕️ Clinical (临床/专家)"
-        elif option == "meeting":
-            return "🤝 Meeting (会议纪要)"
-        return option
-
-    interview_mode = st.radio(
-        "Select Type / 选择类型",
-        ("commercial", "clinical", "meeting"),
-        format_func=format_mode
+    # 1. 一级导航：选择任务类型
+    task_mode = st.radio(
+        "Select Mode / 选择模式",
+        ("interview", "meeting"),
+        format_func=lambda x: "🎤 Expert Interview (专家访谈)" if x == "interview" else "🤝 Meeting Minutes (会议纪要)"
     )
     
+    # 初始化变量
+    company_name = ""
+    product_name = ""
+    meeting_topic = ""
+    interview_mode = "meeting" # 默认
+    
+    # 2. 动态显示输入框
+    if task_mode == "interview":
+        st.markdown("### 📝 Project Info / 项目信息")
+        company_name = st.text_input("Company / 公司名称", placeholder="e.g. Medtronic")
+        product_name = st.text_input("Product / 产品领域", placeholder="e.g. Stapler")
+        interview_date = st.date_input("Date / 访谈日期", datetime.date.today())
+        
+        st.markdown("### 👤 Interviewee Type / 访谈对象")
+        interview_sub_type = st.radio(
+            "Select Type / 选择类型",
+            ("commercial", "clinical"),
+            format_func=lambda x: "🏭 Trade (商业/厂商)" if x == "commercial" else "👨‍⚕️ Clinical (临床/专家)"
+        )
+        interview_mode = interview_sub_type
+        
+    else: # Meeting Mode
+        st.markdown("### 📝 Meeting Info / 会议信息")
+        # 仅保留日期和可选的主题（用于文件名）
+        meeting_topic = st.text_input("Topic / 会议主题 (Optional)", placeholder="e.g. Weekly Sync")
+        interview_date = st.date_input("Date / 会议日期", datetime.date.today())
+        interview_mode = "meeting"
+
     if st.button("🗑️ Reset / 重置"):
         st.session_state['analysis_result'] = None
         st.rerun()
@@ -433,30 +447,36 @@ uploaded_file = st.file_uploader("📂 Upload Audio / 上传录音 (MP3/M4A Reco
 if uploaded_file and st.session_state['analysis_result'] is None:
     if not api_key:
         st.error("Please enter API Key in the sidebar. / 请在侧边栏输入 API Key。")
-    elif not company_name or not product_name:
-        st.warning("Please fill in Company & Product info. / 请填写公司和产品信息。")
     else:
-        st.audio(uploaded_file, format='audio/mp3')
-        if st.button("🚀 Start Analysis (Gemini 3 Pro)", type="primary"):
-            analyzer = InterviewAnalyzer(api_key)
-            
-            with tempfile.NamedTemporaryFile(delete=False, suffix=f".{uploaded_file.name.split('.')[-1]}") as tmp_file:
-                tmp_file.write(uploaded_file.getvalue())
-                tmp_file_path = tmp_file.name
-
-            with st.status("🤖 AI is processing... / AI 正在处理...", expanded=True) as status:
-                st.write("🎧 Uploading audio to Gemini... / 正在上传音频...")
-                audio_resource = analyzer.process_audio(tmp_file_path)
+        # 校验逻辑：访谈模式下必须填公司和产品
+        valid_input = True
+        if task_mode == "interview":
+            if not company_name or not product_name:
+                st.warning("Please fill in Company & Product info. / 请填写公司和产品信息。")
+                valid_input = False
+        
+        if valid_input:
+            st.audio(uploaded_file, format='audio/mp3')
+            if st.button("🚀 Start Analysis (Gemini 3 Pro)", type="primary"):
+                analyzer = InterviewAnalyzer(api_key)
                 
-                if audio_resource:
-                    st.write("🧠 Analyzing (Model: gemini-3-pro-preview)... / 正在分析...")
-                    result = analyzer.analyze_interview(audio_resource, interview_mode)
+                with tempfile.NamedTemporaryFile(delete=False, suffix=f".{uploaded_file.name.split('.')[-1]}") as tmp_file:
+                    tmp_file.write(uploaded_file.getvalue())
+                    tmp_file_path = tmp_file.name
+
+                with st.status("🤖 AI is processing... / AI 正在处理...", expanded=True) as status:
+                    st.write("🎧 Uploading audio to Gemini... / 正在上传音频...")
+                    audio_resource = analyzer.process_audio(tmp_file_path)
                     
-                    if result:
-                        st.session_state['analysis_result'] = result
-                        status.update(label="✅ Done! / 完成！", state="complete", expanded=False)
-                        os.remove(tmp_file_path)
-                        st.rerun()
+                    if audio_resource:
+                        st.write("🧠 Analyzing (Model: gemini-3-pro-preview)... / 正在分析...")
+                        result = analyzer.analyze_interview(audio_resource, interview_mode)
+                        
+                        if result:
+                            st.session_state['analysis_result'] = result
+                            status.update(label="✅ Done! / 完成！", state="complete", expanded=False)
+                            os.remove(tmp_file_path)
+                            st.rerun()
 
 if st.session_state['analysis_result']:
     res = st.session_state['analysis_result']
@@ -464,9 +484,15 @@ if st.session_state['analysis_result']:
     st.success("✅ Analysis Complete. Please download the report. / 分析完成，请下载报告。")
     
     file_date_str = interview_date.strftime("%Y%m%d")
-    file_name = f"Report_{company_name}_{product_name}_{file_date_str}.docx"
     
-    docx_file = generate_word_report(res, company_name, product_name, interview_date, interview_mode)
+    # 动态生成文件名
+    if task_mode == "interview":
+        file_name = f"Interview_{company_name}_{product_name}_{file_date_str}.docx"
+    else:
+        topic_str = meeting_topic if meeting_topic else "Meeting"
+        file_name = f"Minutes_{topic_str}_{file_date_str}.docx"
+    
+    docx_file = generate_word_report(res, company_name, product_name, interview_date, interview_mode, meeting_topic)
     
     st.download_button(
         label=f"📥 Download Word Report / 下载 Word 报告",
