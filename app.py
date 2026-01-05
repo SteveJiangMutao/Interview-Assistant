@@ -5,16 +5,16 @@ import os
 import time
 import json
 from docx import Document
-from docx.shared import Pt, RGBColor, Inches
+from docx.shared import Pt, RGBColor, Inches, Cm  # 引入 Cm 用于精确控制 Logo 高度
 from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING
-from docx.oxml.ns import qn # 用于设置中文字体
+from docx.oxml.ns import qn
 import io
 import datetime
 from google.api_core import retry
 
 # --- 页面配置 / Page Config ---
 st.set_page_config(
-    page_title="Intelligent Interview System",
+    page_title="Clearstate Interview System",
     layout="wide",
     page_icon="🧬",
     initial_sidebar_state="expanded"
@@ -23,7 +23,7 @@ st.set_page_config(
 # --- CSS 样式 / CSS Styling ---
 st.markdown("""
 <style>
-    .main-header { font-size: 2.0rem; color: #2c3e50; font-weight: bold; margin-bottom: 10px; }
+    .main-header { font-size: 2.0rem; color: #2c3e50; font-weight: bold; margin-bottom: 5px; }
     .sub-header { font-size: 1.0rem; color: #7f8c8d; margin-bottom: 20px; }
     .developer-credit { font-size: 0.85rem; color: #95a5a6; margin-top: 50px; border-top: 1px solid #bdc3c7; padding-top: 10px; }
     div[data-testid="stFileUploader"] { margin-top: 20px; }
@@ -34,90 +34,91 @@ st.markdown("""
 if 'analysis_result' not in st.session_state:
     st.session_state['analysis_result'] = None
 
-# --- Word 格式化辅助函数 / Word Formatting Helper ---
-def set_font_style(run, font_size=10.5, bold=False):
+# --- Word 格式化辅助函数 (升级版) ---
+def set_font_style(run, font_size=11, bold=False):
     """
-    强制设置中西文混排字体：
-    English: Times New Roman
-    Chinese: Microsoft YaHei (微软雅黑)
-    Color: Black
+    字体设置：
+    - English: Times New Roman
+    - Chinese: Microsoft YaHei
+    - Color: Black (RGB 0,0,0)
     """
     run.font.name = 'Times New Roman'
     run.element.rPr.rFonts.set(qn('w:eastAsia'), '微软雅黑')
     run.font.size = Pt(font_size)
-    run.font.color.rgb = RGBColor(0, 0, 0) # 纯黑
+    run.font.color.rgb = RGBColor(0, 0, 0)
     run.bold = bold
 
-def add_styled_paragraph(doc, text, style='Normal', bold=False, size=10.5, line_spacing=1.5):
+def add_styled_paragraph(doc, text, bold=False, size=11, level=None):
+    """
+    段落设置：
+    - Line Spacing: 1.0 (Single)
+    - Space Before/After: 3 Pt
+    """
     p = doc.add_paragraph()
-    p.paragraph_format.line_spacing = line_spacing # 行间距
-    p.paragraph_format.space_after = Pt(6) # 段后距
     
-    # 如果是标题，左对齐；如果是正文，两端对齐(可选，这里保持默认左对齐)
+    # 间距设置
+    p.paragraph_format.line_spacing = 1.0
+    p.paragraph_format.space_before = Pt(3)
+    p.paragraph_format.space_after = Pt(3)
     p.alignment = WD_ALIGN_PARAGRAPH.LEFT 
     
     run = p.add_run(str(text))
     set_font_style(run, font_size=size, bold=bold)
     return p
 
-# --- Word 生成逻辑 / Word Generation Logic ---
+# --- Word 生成逻辑 (重构版) ---
 def generate_word_report(data, company, product, date, mode, logo_file=None):
     doc = Document()
     
-    # 0. 页眉 Logo (Header Logo)
+    # 0. 页眉 Logo (Header Logo) - 修正为 1cm 高度
     if logo_file is not None:
         section = doc.sections[0]
         header = section.header
         p_header = header.paragraphs[0]
         p_header.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-        # 调整图片大小，例如宽度 1.5 英寸
         run_header = p_header.add_run()
-        run_header.add_picture(logo_file, width=Inches(1.5))
+        # 核心修改：高度固定为 1cm，宽度自适应
+        run_header.add_picture(logo_file, height=Cm(1.0))
 
-    # 1. 标题 (Title)
-    # 朴素大号字体，左对齐
+    # 1. 标题 (Title) - 朴素左对齐
     title_text = f"{company} - {product} Interview Record"
     p_title = doc.add_paragraph()
     p_title.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    p_title.paragraph_format.space_after = Pt(12)
     run_title = p_title.add_run(title_text)
-    set_font_style(run_title, font_size=18, bold=True)
-    p_title.paragraph_format.space_after = Pt(24)
+    set_font_style(run_title, font_size=16, bold=True) # 稍微加大一点总标题
     
     # 2. 基础信息 (Meta Info)
     info_text = f"Date: {date} | Type: {'Commercial/Industry' if mode == 'commercial' else 'Clinical/Expert'}"
-    add_styled_paragraph(doc, info_text, size=10, bold=False)
+    add_styled_paragraph(doc, info_text, size=10.5, bold=False)
     
     doc.add_paragraph("-" * 80)
 
-    # 3. 执行摘要 (Executive Summary)
+    # 3. 执行摘要 (Executive Summary) - 一级标题 14 Bold
     add_styled_paragraph(doc, '1. Executive Summary / 执行摘要', size=14, bold=True)
     summary = data.get('executive_summary', 'No content generated.')
-    add_styled_paragraph(doc, summary)
+    add_styled_paragraph(doc, summary, size=11)
 
     # 4. 结构化维度分析 (Structured Analysis)
     add_styled_paragraph(doc, '2. Detailed Analysis / 详细维度分析', size=14, bold=True)
-    
-    # 映射表 (保留英文 Key 以匹配 JSON，Value 用于文档标题)
-    # 这里的 Value 可以根据 AI 输出的语言动态调整，但为了保险，我们直接用 AI 输出的 Key 
-    # 或者我们假设 AI 会根据语种输出对应的 Key，这里我们做通用处理
     
     structured = data.get('structured_analysis', {})
     
     if structured:
         for key, points in structured.items():
-            # 标题处理：去掉下划线，首字母大写
+            # 二级标题 12 Bold
             clean_title = key.replace("_", " ").title()
             add_styled_paragraph(doc, clean_title, size=12, bold=True)
             
             if isinstance(points, list):
                 for point in points:
-                    # 使用特殊符号作为 Bullet
-                    p = add_styled_paragraph(doc, f"• {point}")
+                    # 正文 11 Normal
+                    p = add_styled_paragraph(doc, f"• {point}", size=11)
                     p.paragraph_format.left_indent = Inches(0.25)
             else:
-                p = add_styled_paragraph(doc, str(points))
+                add_styled_paragraph(doc, str(points), size=11)
 
-    # 5. 其他维度 (Other Dimensions)
+    # 5. 其他维度 (Other Findings) - 仅当 AI 无法整合时才显示
     other_dims = data.get('other_dimensions', {})
     if other_dims:
         add_styled_paragraph(doc, '3. Other Findings / 其他发现', size=14, bold=True)
@@ -125,52 +126,25 @@ def generate_word_report(data, company, product, date, mode, logo_file=None):
             add_styled_paragraph(doc, str(k), size=12, bold=True)
             if isinstance(v, list):
                 for point in v:
-                    p = add_styled_paragraph(doc, f"• {point}")
+                    p = add_styled_paragraph(doc, f"• {point}", size=11)
                     p.paragraph_format.left_indent = Inches(0.25)
             else:
-                add_styled_paragraph(doc, str(v))
+                add_styled_paragraph(doc, str(v), size=11)
 
-    # 6. Q&A 实录 (Q&A Log)
-    add_styled_paragraph(doc, '4. Q&A Transcript / 访谈实录', size=14, bold=True)
-    qa_log = data.get('qa_log', [])
-    
-    if isinstance(qa_log, list):
-        for qa in qa_log:
-            if isinstance(qa, dict):
-                q_text = qa.get('question', 'N/A')
-                a_text = qa.get('answer', 'N/A')
-                note = qa.get('context_note', None)
-
-                # Q - 加粗
-                add_styled_paragraph(doc, f"Q: {q_text}", bold=True)
-                
-                # A - 正常
-                add_styled_paragraph(doc, f"A: {a_text}")
-                
-                # Note - 斜体 (用辅助函数模拟)
-                if note:
-                    p_note = doc.add_paragraph()
-                    run_note = p_note.add_run(f"[Note: {note}]")
-                    set_font_style(run_note, font_size=9)
-                    run_note.italic = True
-                    p_note.paragraph_format.left_indent = Inches(0.5)
-                
-                # 增加一点间距
-                doc.add_paragraph().paragraph_format.space_after = Pt(2)
+    # Q&A 部分已移除
 
     bio = io.BytesIO()
     doc.save(bio)
     bio.seek(0)
     return bio
 
-# --- 核心逻辑类 / Core Logic ---
+# --- 核心逻辑类 ---
 class InterviewAnalyzer:
     def __init__(self, api_key):
         self.api_key = api_key
         try:
             genai.configure(api_key=self.api_key)
-            # 使用 1.5 Flash 保证长文本处理能力
-            self.model = genai.GenerativeModel('gemini-3-flash-preview') 
+            self.model = genai.GenerativeModel('gemini-1.5-flash') 
         except Exception as e:
             st.error(f"API Error: {e}")
 
@@ -190,67 +164,56 @@ class InterviewAnalyzer:
             return None
 
     def analyze_interview(self, audio_resource, mode):
-        # 1. 框架定义 (Framework)
+        # 1. 框架定义 (Framework) - 强调数据和逻辑
         if mode == "commercial":
             framework_desc = """
-            1. **Market Size & Scale (CRITICAL)**: 
-               - Extract ALL numbers related to market size, volume, and revenue.
-               - **LOGIC FORMULA REQUIREMENT**: Wherever possible, provide the logic used to calculate the size (e.g., "Market Size = 50k procedures * $200 ASP = $10M").
-               - TAM/SAM/SOM breakdown.
-            2. **Competition Landscape**: Market shares, competitor strengths/weaknesses.
-            3. **Sales & Marketing**: Pricing models, sales force structure.
-            4. **Channel & Access**: Distribution model, hospital listing (入院) status.
-            5. **Industry Trends**: VBP (集采), DRG/DIP impact.
+            1. **Market Size & Scale (DATA CRITICAL)**: 
+               - Extract ALL numerical data about market size, volume, revenue, and growth rates.
+               - **LOGIC FORMULA**: You MUST provide the calculation logic if mentioned (e.g., "Total = 50 hospitals * 200 cases/hospital").
+            2. **Competition Landscape**: Market shares (%), competitor strengths/weaknesses, sales team sizes.
+            3. **Sales & Marketing**: Pricing (ASP), channel margins, promotion strategies.
+            4. **Channel & Access**: Distribution structure, admission (入院) barriers.
+            5. **Industry Trends**: VBP impact, policy changes.
             """
         else: # clinical
             framework_desc = """
-            1. **Clinical Value**: Efficacy, safety, comparison with Gold Standard.
-            2. **Adoption & Usage**: Procedures per month, indication expansion.
-            3. **Competitive Comparison**: Head-to-head comparison in clinical practice.
-            4. **Unmet Needs**: Pain points in current surgery/therapy.
-            5. **Future Outlook**: Expectations for next-gen technology.
+            1. **Clinical Value & Efficacy**: Specific clinical outcomes, comparison with Gold Standard.
+            2. **Adoption & Usage**: Monthly procedure volumes, patient selection criteria.
+            3. **Competitive Comparison**: Brand A vs Brand B in clinical practice (pros/cons).
+            4. **Unmet Needs & Pain Points**: Detailed description of current limitations.
+            5. **Future Expectations**: Specific features desired in next-gen products.
             """
 
-        # 2. Prompt 深度优化
+        # 2. Prompt 深度优化 - 强调整合和准确性
         system_prompt = f"""
-        You are a **Senior Medical Device Industry Expert** working for Clearstate.
-        Your task is to extract a comprehensive interview record from the audio.
+        You are a **Senior Medical Device Consultant** at Clearstate.
+        Task: Create a rigorous, data-driven interview report.
 
-        ### 🌍 LANGUAGE INSTRUCTION:
-        - **Auto-Detect**: If the interview is in Chinese, output the report in **Simplified Chinese**.
-        - **Auto-Detect**: If the interview is in English, output the report in **English**.
+        ### 🚨 CRITICAL INSTRUCTIONS:
+        1.  **DATA PRECISION**: Capture EVERY number exactly as spoken. Do not round up or summarize vaguely. If the expert says "12.5%", write "12.5%", not "about 12%".
+        2.  **LOGIC & INSIGHTS**: Do not just list facts. Explain the **"Why"** and **"How"**. If a competitor is growing, explain the specific reason given (e.g., "aggressive pricing," "better sales coverage").
+        3.  **INTEGRATION**: Try to fit ALL information into the main "Structured Analysis" framework. Only use "Other Dimensions" for topics that absolutely do not fit the main categories.
+        4.  **NO Q&A**: Do not output a Q&A transcript. Focus on the analysis.
+        5.  **CONTEXT CORRECTION**: Correct ASR errors (e.g., "亚培" -> "雅培 Abbott", "强生" -> "强生 J&J").
 
-        ### 🧠 CONTEXTUAL CORRECTION (Medical Device Domain):
-        - You must intelligently correct ASR errors based on medical context.
-        - Examples: 
-          - "亚培" -> "雅培 (Abbott)"
-          - "强生" -> "强生 (J&J)"
-          - "美敦力" -> "美敦力 (Medtronic)"
-          - "吻合器" (Stapler), "超声刀" (Ultrasonic Scalpel), etc.
-
-        ### 📊 DATA PRECISION RULES:
-        - **Numbers are Sacred**: Do not miss any digits.
-        - **Logic Formulas**: For any market sizing data, explicitly state the calculation logic if mentioned (e.g., "Volume x Price").
+        ### LANGUAGE:
+        - Output in the **same language** as the interview audio (Chinese or English).
 
         ### FRAMEWORK:
         {framework_desc}
 
-        ### OUTPUT JSON FORMAT:
+        ### OUTPUT JSON:
         {{
-            "executive_summary": "Summary of key insights.",
+            "executive_summary": "High-level summary of the key takeaways (300 words).",
             "structured_analysis": {{
-                "Dimension_Name": ["Point 1", "Point 2 (Logic: A * B = C)"]
+                "Dimension_Name": [
+                    "Point 1: Detailed insight with numbers.", 
+                    "Point 2: Logic formula (A * B = C)."
+                ]
             }},
             "other_dimensions": {{
                 "Topic": ["Detail"]
-            }},
-            "qa_log": [
-                {{
-                    "question": "Question text",
-                    "answer": "Answer text",
-                    "context_note": "Correction note or context"
-                }}
-            ]
+            }}
         }}
         """
         
@@ -307,6 +270,8 @@ with st.sidebar:
     # Logo 上传
     st.markdown("### 🖼️ Report Logo / 报告Logo")
     uploaded_logo = st.file_uploader("Upload Logo (Optional)", type=['png', 'jpg', 'jpeg'])
+    if uploaded_logo:
+        st.caption("Logo will be resized to 1cm height in Word.")
     
     st.markdown("### 🛠️ Mode / 模式")
     interview_mode = st.radio(
@@ -377,4 +342,3 @@ if st.session_state['analysis_result']:
     st.markdown("---")
     st.markdown("### 📊 Preview / 预览")
     st.write(res.get('executive_summary'))
-
