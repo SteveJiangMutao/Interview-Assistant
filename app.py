@@ -170,7 +170,7 @@ class InterviewAnalyzer:
         try:
             genai.configure(api_key=self.api_key)
             # 使用 1.5 Flash 保证长文本处理能力
-            self.model = genai.GenerativeModel('gemini-1.5-flash') 
+            self.model = genai.GenerativeModel('gemini-3-flash-preview') 
         except Exception as e:
             st.error(f"API Error: {e}")
 
@@ -377,3 +377,4 @@ if st.session_state['analysis_result']:
     st.markdown("---")
     st.markdown("### 📊 Preview / 预览")
     st.write(res.get('executive_summary'))
+
