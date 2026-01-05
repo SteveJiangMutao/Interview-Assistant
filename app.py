@@ -13,7 +13,7 @@ import datetime
 from google.api_core import retry
 
 # --- 🔧 配置项：Logo 文件 ---
-# LOGO_PATH = "logo.png" 
+LOGO_PATH = "logo.png" 
 
 # --- 页面配置 ---
 st.set_page_config(
@@ -635,4 +635,5 @@ if st.session_state['analysis_result']:
     st.markdown("---")
     st.markdown("### Preview / 预览")
     st.write(res.get('executive_summary'))
+
 
