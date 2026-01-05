@@ -226,18 +226,19 @@ SECTION_HEADERS = {
 def generate_word_report(data, company, product, date, mode, meeting_topic=""):
     doc = Document()
     
-    # 0. Logo (右上角, 高度 0.65cm)
-    section = doc.sections[0]
-    header = section.header
-    p_header = header.paragraphs[0]
-    p_header.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-    
-    if os.path.exists(LOGO_PATH):
-        try:
-            run_header = p_header.add_run()
-            run_header.add_picture(LOGO_PATH, height=Cm(0.65))
-        except Exception as e:
-            print(f"Logo Error: {e}")
+    # 0. Logo (右上角, 高度 0.65cm) - [暂时禁用 / Temporarily Disabled]
+    # 若需恢复，请取消下方代码的注释
+    # section = doc.sections[0]
+    # header = section.header
+    # p_header = header.paragraphs[0]
+    # p_header.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    #
+    # if os.path.exists(LOGO_PATH):
+    #     try:
+    #         run_header = p_header.add_run()
+    #         run_header.add_picture(LOGO_PATH, height=Cm(0.65))
+    #     except Exception as e:
+    #         print(f"Logo Error: {e}")
     
     # 语言判断
     lang = data.get('language', 'en')
@@ -587,7 +588,8 @@ if uploaded_file and st.session_state['analysis_result'] is None:
         
         if valid_input:
             st.audio(uploaded_file, format='audio/mp3')
-            if st.button("Start Analysis (Gemini 3 Pro)", type="primary"):
+            # [修改点] 按钮文本隐藏模型名
+            if st.button("Start Analysis / 开始分析", type="primary"):
                 analyzer = InterviewAnalyzer(api_key)
                 
                 with tempfile.NamedTemporaryFile(delete=False, suffix=f".{uploaded_file.name.split('.')[-1]}") as tmp_file:
@@ -599,7 +601,8 @@ if uploaded_file and st.session_state['analysis_result'] is None:
                     audio_resource = analyzer.process_audio(tmp_file_path)
                     
                     if audio_resource:
-                        st.write("Analyzing (Model: gemini-3-pro-preview)... / 正在分析...")
+                        # [修改点] 状态文本隐藏模型名
+                        st.write("Analyzing... / 正在智能分析...")
                         result = analyzer.analyze_interview(audio_resource, interview_mode)
                         
                         if result:
