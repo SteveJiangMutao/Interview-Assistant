@@ -58,8 +58,8 @@ def add_styled_paragraph(doc, text, bold=False, size=11, is_bullet=False, indent
     clean_content = clean_text(str(text))
     p = doc.add_paragraph()
     p.paragraph_format.line_spacing = 1.0
-    p.paragraph_format.space_before = Pt(3)
-    p.paragraph_format.space_after = Pt(3)
+    p.paragraph_format.space_before = Pt(2)
+    p.paragraph_format.space_after = Pt(2)
     p.alignment = WD_ALIGN_PARAGRAPH.LEFT 
     
     # --- 悬挂缩进逻辑 (Strict Hanging Indent) ---
@@ -510,3 +510,4 @@ if st.session_state['analysis_result']:
     st.markdown("---")
     st.markdown("### Preview / 预览")
     st.write(res.get('executive_summary'))
+
