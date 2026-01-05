@@ -6,7 +6,7 @@ import time
 import json
 from docx import Document
 from docx.shared import Pt, RGBColor, Inches, Cm
-from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING
+from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING, WD_TAB_ALIGNMENT
 from docx.oxml.ns import qn
 import io
 import datetime
@@ -14,7 +14,7 @@ from google.api_core import retry
 
 # --- 🔧 配置项：Logo 文件 ---
 # 必须在 GitHub 仓库根目录上传名为 logo.jpg 的文件
-LOGO_PATH = "logo.png" 
+LOGO_PATH = "logo.jpg" 
 
 # --- 页面配置 ---
 st.set_page_config(
@@ -63,14 +63,27 @@ def add_styled_paragraph(doc, text, bold=False, size=11, is_bullet=False):
     p.paragraph_format.space_after = Pt(3)
     p.alignment = WD_ALIGN_PARAGRAPH.LEFT 
     
-    # --- 悬挂缩进逻辑 (Hanging Indent) ---
+    # --- 悬挂缩进逻辑 (Strict Hanging Indent) ---
     if is_bullet:
-        # 整体向右缩进 0.25 英寸
-        p.paragraph_format.left_indent = Inches(0.25)
-        # 首行向左回退 0.25 英寸 (抵消整体缩进，使圆点位于左侧，文字对齐)
-        p.paragraph_format.first_line_indent = Inches(-0.25)
+        # 1. 设置缩进距离 (0.25 英寸)
+        indent_size = Inches(0.25)
+        
+        # 2. 整体左缩进 (控制第二行及以后的起始位置)
+        p.paragraph_format.left_indent = indent_size
+        
+        # 3. 首行负缩进 (让圆点回到左边)
+        p.paragraph_format.first_line_indent = -indent_size
+        
+        # 4. 添加制表位 (Tab Stop)
+        # 这一步至关重要：它强制第一行在圆点后的文字也跳到 indent_size 的位置开始
+        p.paragraph_format.tab_stops.add_tab_stop(indent_size, WD_TAB_ALIGNMENT.LEFT)
+        
+        # 5. 组合文本：圆点 + Tab + 内容
+        final_text = f"•\t{clean_content}"
+        run = p.add_run(final_text)
+    else:
+        run = p.add_run(clean_content)
     
-    run = p.add_run(clean_content)
     set_font_style(run, font_size=size, bold=bold)
     return p
 
@@ -114,7 +127,7 @@ SECTION_HEADERS = {
 def generate_word_report(data, company, product, date, mode):
     doc = Document()
     
-    # 0. Logo (右上角, 高度 1cm)
+    # 0. Logo (右上角, 高度 0.65cm)
     section = doc.sections[0]
     header = section.header
     p_header = header.paragraphs[0]
@@ -123,7 +136,8 @@ def generate_word_report(data, company, product, date, mode):
     if os.path.exists(LOGO_PATH):
         try:
             run_header = p_header.add_run()
-            run_header.add_picture(LOGO_PATH, height=Cm(1.0))
+            # 🚨 修改：高度调整为 0.65cm
+            run_header.add_picture(LOGO_PATH, height=Cm(0.65))
         except Exception as e:
             print(f"Logo Error: {e}")
     
@@ -137,6 +151,7 @@ def generate_word_report(data, company, product, date, mode):
     # 1. 标题与基础信息
     if lang_code == 'zh':
         title_text = f"{company} - {product} 访谈记录"
+        # 🚨 修改：Commercial 对应 商业/厂商 (Trade)
         type_text = '商业/厂商' if mode == 'commercial' else '临床/专家'
         date_prefix = "访谈日期"
         type_prefix = "访谈类型"
@@ -144,7 +159,8 @@ def generate_word_report(data, company, product, date, mode):
         other_title = "3. 其他发现"
     else:
         title_text = f"{company} - {product} Interview Record"
-        type_text = 'Commercial/Trade' if mode == 'commercial' else 'Clinical/Expert'
+        # 🚨 修改：Commercial -> Trade
+        type_text = 'Trade' if mode == 'commercial' else 'Clinical/Expert'
         date_prefix = "Date"
         type_prefix = "Type"
         exec_title = "1. Executive Summary"
@@ -189,9 +205,8 @@ def generate_word_report(data, company, product, date, mode):
                 
                 if isinstance(points, list):
                     for point in points:
-                        # 启用悬挂缩进 (is_bullet=True)
-                        # 手动添加 Bullet 符号，然后利用格式控制对齐
-                        add_styled_paragraph(doc, f"• {point}", size=11, is_bullet=True)
+                        # 启用严格对齐的 Bullet 模式
+                        add_styled_paragraph(doc, point, size=11, is_bullet=True)
                 else:
                     add_styled_paragraph(doc, str(points), size=11)
 
@@ -204,7 +219,7 @@ def generate_word_report(data, company, product, date, mode):
             add_styled_paragraph(doc, clean_k, size=12, bold=True)
             if isinstance(v, list):
                 for point in v:
-                    add_styled_paragraph(doc, f"• {point}", size=11, is_bullet=True)
+                    add_styled_paragraph(doc, point, size=11, is_bullet=True)
             else:
                 add_styled_paragraph(doc, str(v), size=11)
 
@@ -362,11 +377,13 @@ with st.sidebar:
     product_name = st.text_input("Product / 产品领域", placeholder="e.g. Stapler")
     interview_date = st.date_input("Date / 访谈日期", datetime.date.today())
     
-    st.markdown("### 🛠️ Mode / 模式")
+    # 🚨 修改：UI Label 更新
+    st.markdown("### 🛠️ Interviewee Type / 访谈对象类型")
     interview_mode = st.radio(
         "Select Type / 选择类型",
         ("commercial", "clinical"),
-        format_func=lambda x: "🏭 Commercial (商业/厂商)" if x == "commercial" else "👨‍⚕️ Clinical (临床/专家)"
+        # 🚨 修改：Commercial -> Trade
+        format_func=lambda x: "🏭 Trade (商业/厂商)" if x == "commercial" else "👨‍⚕️ Clinical (临床/专家)"
     )
     
     if st.button("🗑️ Reset / 重置"):
@@ -427,4 +444,3 @@ if st.session_state['analysis_result']:
     st.markdown("---")
     st.markdown("### 📊 Preview / 预览")
     st.write(res.get('executive_summary'))
-
