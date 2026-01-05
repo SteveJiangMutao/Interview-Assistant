@@ -13,7 +13,6 @@ import datetime
 from google.api_core import retry
 
 # --- 🔧 配置项：Logo 文件 ---
-# 🚨 修改：改回 logo.png
 LOGO_PATH = "logo.png" 
 
 # --- 页面配置 ---
@@ -65,19 +64,11 @@ def add_styled_paragraph(doc, text, bold=False, size=11, is_bullet=False):
     
     # --- 悬挂缩进逻辑 (Strict Hanging Indent) ---
     if is_bullet:
-        # 1. 设置缩进距离 (0.25 英寸)
         indent_size = Inches(0.25)
-        
-        # 2. 整体左缩进
         p.paragraph_format.left_indent = indent_size
-        
-        # 3. 首行负缩进
         p.paragraph_format.first_line_indent = -indent_size
-        
-        # 4. 添加制表位 (Tab Stop) - 强制对齐
         p.paragraph_format.tab_stops.add_tab_stop(indent_size, WD_TAB_ALIGNMENT.LEFT)
         
-        # 5. 组合文本：圆点 + Tab + 内容
         final_text = f"•\t{clean_content}"
         run = p.add_run(final_text)
     else:
@@ -86,7 +77,7 @@ def add_styled_paragraph(doc, text, bold=False, size=11, is_bullet=False):
     set_font_style(run, font_size=size, bold=bold)
     return p
 
-# --- 🌍 标题映射字典 (彻底移除多余翻译) ---
+# --- 🌍 标题映射字典 ---
 SECTION_HEADERS = {
     "commercial": {
         "zh": {
@@ -119,6 +110,20 @@ SECTION_HEADERS = {
             "pain_points": "4. Unmet Needs & Pain Points",
             "expectations": "5. Future Expectations"
         }
+    },
+    "meeting": {
+        "zh": {
+            "meeting_context": "1. 会议背景与参会人",
+            "key_discussion": "2. 核心讨论内容",
+            "conclusions": "3. 结论与决策",
+            "action_items": "4. 待办事项与下一步 (Follow-up)"
+        },
+        "en": {
+            "meeting_context": "1. Context & Attendees",
+            "key_discussion": "2. Key Discussion Points",
+            "conclusions": "3. Conclusions & Decisions",
+            "action_items": "4. Action Items & Follow-ups"
+        }
     }
 }
 
@@ -148,15 +153,25 @@ def generate_word_report(data, company, product, date, mode):
 
     # 1. 标题与基础信息
     if lang_code == 'zh':
-        title_text = f"{company} - {product} 访谈记录"
-        type_text = '商业/厂商' if mode == 'commercial' else '临床/专家'
-        date_prefix = "访谈日期"
-        type_prefix = "访谈类型"
-        exec_title = "1. 执行摘要"
-        other_title = "3. 其他发现"
+        if mode == 'meeting':
+            title_text = f"{company} - {product} 会议纪要"
+            type_text = '内部会议/外部沟通'
+        else:
+            title_text = f"{company} - {product} 访谈记录"
+            type_text = '商业/厂商' if mode == 'commercial' else '临床/专家'
+            
+        date_prefix = "日期"
+        type_prefix = "类型"
+        exec_title = "1. 摘要概览" if mode == 'meeting' else "1. 执行摘要"
+        other_title = "5. 其他补充" if mode == 'meeting' else "3. 其他发现"
     else:
-        title_text = f"{company} - {product} Interview Record"
-        type_text = 'Trade' if mode == 'commercial' else 'Clinical/Expert'
+        if mode == 'meeting':
+            title_text = f"{company} - {product} Meeting Minutes"
+            type_text = 'Meeting/Discussion'
+        else:
+            title_text = f"{company} - {product} Interview Record"
+            type_text = 'Trade' if mode == 'commercial' else 'Clinical/Expert'
+            
         date_prefix = "Date"
         type_prefix = "Type"
         exec_title = "1. Executive Summary"
@@ -173,25 +188,31 @@ def generate_word_report(data, company, product, date, mode):
     add_styled_paragraph(doc, info_text, size=10.5, bold=False)
     doc.add_paragraph("-" * 80)
 
-    # 2. Executive Summary
-    add_styled_paragraph(doc, exec_title, size=14, bold=True)
+    # 2. Executive Summary (For meeting, this is the Overview)
+    # 对于会议模式，如果 executive_summary 为空，则跳过
     summary = data.get('executive_summary', '')
-    add_styled_paragraph(doc, summary, size=11)
+    if summary:
+        add_styled_paragraph(doc, exec_title, size=14, bold=True)
+        add_styled_paragraph(doc, summary, size=11)
 
     # 3. Structured Analysis
     header_map = SECTION_HEADERS.get(mode, {}).get(lang_code, {})
     structured = data.get('structured_analysis', {})
     
     if structured:
-        section_2_title = "2. 详细维度分析" if lang_code == 'zh' else "2. Detailed Analysis"
-        add_styled_paragraph(doc, section_2_title, size=14, bold=True)
+        # 会议模式不需要 "Detailed Analysis" 这种大标题，直接进入 subsections
+        if mode != 'meeting':
+            section_2_title = "2. 详细维度分析" if lang_code == 'zh' else "2. Detailed Analysis"
+            add_styled_paragraph(doc, section_2_title, size=14, bold=True)
 
         # 强制顺序
         key_order = []
         if mode == 'commercial':
             key_order = ['market_size', 'competition', 'sales_marketing', 'channel_access', 'trends']
-        else:
+        elif mode == 'clinical':
             key_order = ['clinical_value', 'adoption', 'competition', 'pain_points', 'expectations']
+        elif mode == 'meeting':
+            key_order = ['meeting_context', 'key_discussion', 'conclusions', 'action_items']
 
         for key in key_order:
             if key in structured:
@@ -229,7 +250,6 @@ class InterviewAnalyzer:
         self.api_key = api_key
         try:
             genai.configure(api_key=self.api_key)
-            # 强制使用 gemini-3-pro-preview
             self.model = genai.GenerativeModel('gemini-3-pro-preview') 
         except Exception as e:
             st.error(f"API Error: {e}")
@@ -267,7 +287,7 @@ class InterviewAnalyzer:
             4. Channel & Access: Distributors, admission.
             5. Industry Trends: Policy, macro environment.
             """
-        else: # clinical
+        elif mode == "clinical":
             keys_instruction = """
             Use these EXACT keys for `structured_analysis`:
             - `clinical_value` (for Clinical Value)
@@ -283,24 +303,38 @@ class InterviewAnalyzer:
             4. Unmet Needs: Pain points.
             5. Future Expectations: Next-gen features.
             """
+        else: # meeting
+            keys_instruction = """
+            Use these EXACT keys for `structured_analysis`:
+            - `meeting_context` (Attendees, Background)
+            - `key_discussion` (Detailed discussion points, arguments made)
+            - `conclusions` (What was agreed or decided)
+            - `action_items` (Follow-ups, To-dos with owners)
+            """
+            framework_desc = """
+            1. Meeting Context: List attendees and the main purpose of the meeting.
+            2. Key Discussion Points: COMPREHENSIVE summary of all topics discussed. Do not miss details.
+            3. Conclusions & Decisions: Clear list of decisions made.
+            4. Action Items: Specific next steps, who is responsible, and deadlines if mentioned.
+            """
 
         system_prompt = f"""
-        You are a **Senior Medical Device Consultant** at Clearstate.
-        Task: Create a rigorous, data-driven interview report.
+        You are a **Senior Consultant** at Clearstate.
+        Task: Create a rigorous, data-driven report based on the audio.
 
         ### 🚨 CRITICAL INSTRUCTIONS:
-        1.  **LANGUAGE CONSISTENCY**: Detect the language of the interview. 
+        1.  **LANGUAGE CONSISTENCY**: Detect the language. 
             - If Chinese: Output ALL content in Simplified Chinese.
             - If English: Output ALL content in English.
             - **Set the `language` field in JSON to "zh" or "en".**
         2.  **NO MARKDOWN**: Do NOT use bolding marks (like **text**) in the JSON values. Output plain text only.
         3.  **STRICTLY NO TRANSLATION OF NAMES**: 
             - **KEEP IT VERBATIM**. 
-            - If the expert says "Medtronic", write "Medtronic". Do NOT write "Medtronic (美敦力)".
-            - If the expert says "Stapler", write "Stapler". Do NOT write "Stapler (吻合器)".
-            - Do not add any parenthetical translations for company names, products, or technical terms.
-        4.  **DATA PRECISION**: Capture EVERY number. Provide logic formulas for calculations.
-        5.  **INTEGRATION**: Fit information into the main framework.
+            - Do NOT translate proper nouns (Company names, Product names, Technical terms).
+            - Do not add parenthetical translations.
+        4.  **COMPREHENSIVENESS**: 
+            - For Interviews: Capture every number and logic.
+            - For Meetings: **Do not omit any discussion points or follow-ups.** Be very detailed.
 
         ### FRAMEWORK KEYS:
         {keys_instruction}
@@ -311,12 +345,9 @@ class InterviewAnalyzer:
         ### OUTPUT JSON:
         {{
             "language": "zh", 
-            "executive_summary": "Summary...",
+            "executive_summary": "High-level summary...",
             "structured_analysis": {{
-                "market_size": [
-                    "Point 1", 
-                    "Point 2"
-                ]
+                "key_1": ["Point 1", "Point 2"]
             }},
             "other_dimensions": {{
                 "Topic": ["Detail"]
@@ -373,10 +404,21 @@ with st.sidebar:
     interview_date = st.date_input("Date / 访谈日期", datetime.date.today())
     
     st.markdown("### 🛠️ Interviewee Type / 访谈对象类型")
+    
+    # 映射 UI 显示名称
+    def format_mode(option):
+        if option == "commercial":
+            return "🏭 Trade (商业/厂商)"
+        elif option == "clinical":
+            return "👨‍⚕️ Clinical (临床/专家)"
+        elif option == "meeting":
+            return "🤝 Meeting (会议纪要)"
+        return option
+
     interview_mode = st.radio(
         "Select Type / 选择类型",
-        ("commercial", "clinical"),
-        format_func=lambda x: "🏭 Trade (商业/厂商)" if x == "commercial" else "👨‍⚕️ Clinical (临床/专家)"
+        ("commercial", "clinical", "meeting"),
+        format_func=format_mode
     )
     
     if st.button("🗑️ Reset / 重置"):
@@ -422,7 +464,7 @@ if st.session_state['analysis_result']:
     st.success("✅ Analysis Complete. Please download the report. / 分析完成，请下载报告。")
     
     file_date_str = interview_date.strftime("%Y%m%d")
-    file_name = f"Interview_Record_{company_name}_{product_name}_{file_date_str}.docx"
+    file_name = f"Report_{company_name}_{product_name}_{file_date_str}.docx"
     
     docx_file = generate_word_report(res, company_name, product_name, interview_date, interview_mode)
     
