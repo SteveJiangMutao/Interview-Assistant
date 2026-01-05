@@ -117,15 +117,19 @@ def set_font_style(run, font_size=11, bold=False):
     run.font.color.rgb = RGBColor(0, 0, 0)
     run.bold = bold
 
-def add_styled_paragraph(doc, text, bold=False, size=11, is_bullet=False, indent_level=0):
+# [修改点] 增加 keep_with_next 参数
+def add_styled_paragraph(doc, text, bold=False, size=11, is_bullet=False, indent_level=0, keep_with_next=False):
     clean_content = clean_text(str(text))
     p = doc.add_paragraph()
     p.paragraph_format.line_spacing = 1.0
     p.paragraph_format.space_before = Pt(3)
-    # [修改点 5] 段间距改为 2pt
     p.paragraph_format.space_after = Pt(2) 
     p.alignment = WD_ALIGN_PARAGRAPH.LEFT 
     
+    # [修改点] 设置“与下段同页”，防止标题孤立在页尾
+    if keep_with_next:
+        p.paragraph_format.keep_with_next = True
+
     # --- 悬挂缩进逻辑 (Strict Hanging Indent) ---
     if is_bullet:
         base_indent = 0.25
@@ -139,8 +143,7 @@ def add_styled_paragraph(doc, text, bold=False, size=11, is_bullet=False, indent
         run_bullet = p.add_run("•\t")
         set_font_style(run_bullet, font_size=size, bold=bold)
 
-        # [修改点 6] 智能加粗逻辑：检测冒号
-        # 如果包含中文冒号或英文冒号，分割并加粗前半部分
+        # 智能加粗逻辑：检测冒号
         if "：" in clean_content:
             parts = clean_content.split("：", 1)
             run_key = p.add_run(parts[0] + "：")
@@ -158,12 +161,10 @@ def add_styled_paragraph(doc, text, bold=False, size=11, is_bullet=False, indent
             set_font_style(run_val, font_size=size, bold=False) # 冒号后正常
             
         else:
-            # 没有冒号，正常输出
             run = p.add_run(clean_content)
             set_font_style(run, font_size=size, bold=bold)
             
     else:
-        # 非 Bullet 段落，正常输出
         run = p.add_run(clean_content)
         set_font_style(run, font_size=size, bold=bold)
     
@@ -287,7 +288,8 @@ def generate_word_report(data, company, product, date, mode, meeting_topic=""):
     # 2. Executive Summary
     summary = data.get('executive_summary', '')
     if summary:
-        add_styled_paragraph(doc, exec_title, size=14, bold=True)
+        # [修改点] 标题启用 keep_with_next
+        add_styled_paragraph(doc, exec_title, size=14, bold=True, keep_with_next=True)
         add_styled_paragraph(doc, summary, size=11)
 
     # 3. Structured Analysis
@@ -307,7 +309,9 @@ def generate_word_report(data, company, product, date, mode, meeting_topic=""):
             if key in structured:
                 points = structured[key]
                 display_title = header_map.get(key, key.title())
-                add_styled_paragraph(doc, display_title, size=12, bold=True)
+                
+                # [修改点] 所有结构化小标题启用 keep_with_next
+                add_styled_paragraph(doc, display_title, size=12, bold=True, keep_with_next=True)
                 
                 if isinstance(points, list):
                     for point in points:
@@ -318,12 +322,9 @@ def generate_word_report(data, company, product, date, mode, meeting_topic=""):
     # 4. Other Findings
     other_dims = data.get('other_dimensions', {})
     if other_dims:
-        add_styled_paragraph(doc, other_title, size=14, bold=True)
+        # [修改点] 标题启用 keep_with_next
+        add_styled_paragraph(doc, other_title, size=14, bold=True, keep_with_next=True)
         for k, v in other_dims.items():
-            # [修改点 3] 不再打印 Key (副标题)，直接打印 Value
-            # clean_k = clean_text(k)
-            # add_styled_paragraph(doc, clean_k, size=12, bold=True) <-- DELETED
-            
             if isinstance(v, list):
                 for point in v:
                     add_styled_paragraph(doc, point, size=11, is_bullet=True)
@@ -435,7 +436,7 @@ class InterviewAnalyzer:
             - **Goal**: The output must read like a polished consulting report, not a raw transcript.
         
         5.  **TONE & STYLE (NO METAPHORS)**:
-            - **[修改点 4]**: Use direct, professional business language.
+            - Use direct, professional business language.
             - **FORBIDDEN**: Do NOT use metaphors, slang, or dramatic expressions.
             - **Example**: NEVER use "脚踝斩" (ankle chop). Use "价格大幅下降" (significant price drop) instead.
             - **Example**: NEVER use "白菜价". Use "低价策略" instead.
@@ -492,7 +493,6 @@ class InterviewAnalyzer:
 
 # --- UI 主程序 ---
 with st.sidebar:
-    # [修改点 1] 标题修改
     st.title("Consulting AI")
     
     st.markdown("""
@@ -570,7 +570,6 @@ with st.sidebar:
         st.session_state['analysis_result'] = None
         st.rerun()
 
-# [修改点 2] 主标题修改
 st.markdown('<div class="main-header">智能市场洞察辅助工具</div>', unsafe_allow_html=True)
 st.markdown('<div class="sub-header">Intelligent Market Insight Assistant</div>', unsafe_allow_html=True)
 
@@ -635,5 +634,3 @@ if st.session_state['analysis_result']:
     st.markdown("---")
     st.markdown("### Preview / 预览")
     st.write(res.get('executive_summary'))
-
-
