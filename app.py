@@ -13,8 +13,8 @@ import datetime
 from google.api_core import retry
 
 # --- 🔧 配置项：Logo 文件 ---
-# 必须在 GitHub 仓库根目录上传名为 logo.jpg 的文件
-LOGO_PATH = "logo.jpg" 
+# 🚨 修改：改回 logo.png
+LOGO_PATH = "logo.png" 
 
 # --- 页面配置 ---
 st.set_page_config(
@@ -68,14 +68,13 @@ def add_styled_paragraph(doc, text, bold=False, size=11, is_bullet=False):
         # 1. 设置缩进距离 (0.25 英寸)
         indent_size = Inches(0.25)
         
-        # 2. 整体左缩进 (控制第二行及以后的起始位置)
+        # 2. 整体左缩进
         p.paragraph_format.left_indent = indent_size
         
-        # 3. 首行负缩进 (让圆点回到左边)
+        # 3. 首行负缩进
         p.paragraph_format.first_line_indent = -indent_size
         
-        # 4. 添加制表位 (Tab Stop)
-        # 这一步至关重要：它强制第一行在圆点后的文字也跳到 indent_size 的位置开始
+        # 4. 添加制表位 (Tab Stop) - 强制对齐
         p.paragraph_format.tab_stops.add_tab_stop(indent_size, WD_TAB_ALIGNMENT.LEFT)
         
         # 5. 组合文本：圆点 + Tab + 内容
@@ -87,15 +86,15 @@ def add_styled_paragraph(doc, text, bold=False, size=11, is_bullet=False):
     set_font_style(run, font_size=size, bold=bold)
     return p
 
-# --- 🌍 标题映射字典 ---
+# --- 🌍 标题映射字典 (彻底移除多余翻译) ---
 SECTION_HEADERS = {
     "commercial": {
         "zh": {
-            "market_size": "1. 市场规模与体量 (Market Size)",
-            "competition": "2. 竞争格局 (Competition)",
-            "sales_marketing": "3. 销售与营销策略 (Sales & Marketing)",
-            "channel_access": "4. 渠道与准入 (Channel & Access)",
-            "trends": "5. 行业趋势 (Industry Trends)"
+            "market_size": "1. 市场规模与体量",
+            "competition": "2. 竞争格局",
+            "sales_marketing": "3. 销售与营销策略",
+            "channel_access": "4. 渠道与准入",
+            "trends": "5. 行业趋势"
         },
         "en": {
             "market_size": "1. Market Size & Scale",
@@ -107,11 +106,11 @@ SECTION_HEADERS = {
     },
     "clinical": {
         "zh": {
-            "clinical_value": "1. 临床价值与疗效 (Clinical Value)",
-            "adoption": "2. 临床应用与术式 (Adoption & Usage)",
-            "competition": "3. 竞品对比 (Competitive Comparison)",
-            "pain_points": "4. 未满足需求与痛点 (Unmet Needs)",
-            "expectations": "5. 未来预期 (Future Expectations)"
+            "clinical_value": "1. 临床价值与疗效",
+            "adoption": "2. 临床应用与术式",
+            "competition": "3. 竞品对比",
+            "pain_points": "4. 未满足需求与痛点",
+            "expectations": "5. 未来预期"
         },
         "en": {
             "clinical_value": "1. Clinical Value & Efficacy",
@@ -136,7 +135,6 @@ def generate_word_report(data, company, product, date, mode):
     if os.path.exists(LOGO_PATH):
         try:
             run_header = p_header.add_run()
-            # 🚨 修改：高度调整为 0.65cm
             run_header.add_picture(LOGO_PATH, height=Cm(0.65))
         except Exception as e:
             print(f"Logo Error: {e}")
@@ -151,7 +149,6 @@ def generate_word_report(data, company, product, date, mode):
     # 1. 标题与基础信息
     if lang_code == 'zh':
         title_text = f"{company} - {product} 访谈记录"
-        # 🚨 修改：Commercial 对应 商业/厂商 (Trade)
         type_text = '商业/厂商' if mode == 'commercial' else '临床/专家'
         date_prefix = "访谈日期"
         type_prefix = "访谈类型"
@@ -159,7 +156,6 @@ def generate_word_report(data, company, product, date, mode):
         other_title = "3. 其他发现"
     else:
         title_text = f"{company} - {product} Interview Record"
-        # 🚨 修改：Commercial -> Trade
         type_text = 'Trade' if mode == 'commercial' else 'Clinical/Expert'
         date_prefix = "Date"
         type_prefix = "Type"
@@ -205,7 +201,6 @@ def generate_word_report(data, company, product, date, mode):
                 
                 if isinstance(points, list):
                     for point in points:
-                        # 启用严格对齐的 Bullet 模式
                         add_styled_paragraph(doc, point, size=11, is_bullet=True)
                 else:
                     add_styled_paragraph(doc, str(points), size=11)
@@ -377,12 +372,10 @@ with st.sidebar:
     product_name = st.text_input("Product / 产品领域", placeholder="e.g. Stapler")
     interview_date = st.date_input("Date / 访谈日期", datetime.date.today())
     
-    # 🚨 修改：UI Label 更新
     st.markdown("### 🛠️ Interviewee Type / 访谈对象类型")
     interview_mode = st.radio(
         "Select Type / 选择类型",
         ("commercial", "clinical"),
-        # 🚨 修改：Commercial -> Trade
         format_func=lambda x: "🏭 Trade (商业/厂商)" if x == "commercial" else "👨‍⚕️ Clinical (临床/专家)"
     )
     
