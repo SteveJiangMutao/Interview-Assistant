@@ -60,7 +60,8 @@ st.markdown("""
     /* 3. 强制清除 Streamlit 原生控件的默认上边距 */
     div[data-testid="stRadio"], 
     div[data-testid="stTextInput"], 
-    div[data-testid="stDateInput"] {
+    div[data-testid="stDateInput"],
+    div[data-testid="stSelectbox"] {
         margin-top: 0px !important;
         padding-top: 0px !important;
     }
@@ -117,7 +118,6 @@ def set_font_style(run, font_size=11, bold=False):
     run.font.color.rgb = RGBColor(0, 0, 0)
     run.bold = bold
 
-# [修改点] 增加 keep_with_next 参数
 def add_styled_paragraph(doc, text, bold=False, size=11, is_bullet=False, indent_level=0, keep_with_next=False):
     clean_content = clean_text(str(text))
     p = doc.add_paragraph()
@@ -126,7 +126,6 @@ def add_styled_paragraph(doc, text, bold=False, size=11, is_bullet=False, indent
     p.paragraph_format.space_after = Pt(2) 
     p.alignment = WD_ALIGN_PARAGRAPH.LEFT 
     
-    # [修改点] 设置“与下段同页”，防止标题孤立在页尾
     if keep_with_next:
         p.paragraph_format.keep_with_next = True
 
@@ -226,20 +225,6 @@ SECTION_HEADERS = {
 def generate_word_report(data, company, product, date, mode, meeting_topic=""):
     doc = Document()
     
-    # 0. Logo (右上角, 高度 0.65cm) - [暂时禁用 / Temporarily Disabled]
-    # 若需恢复，请取消下方代码的注释
-    # section = doc.sections[0]
-    # header = section.header
-    # p_header = header.paragraphs[0]
-    # p_header.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-    #
-    # if os.path.exists(LOGO_PATH):
-    #     try:
-    #         run_header = p_header.add_run()
-    #         run_header.add_picture(LOGO_PATH, height=Cm(0.65))
-    #     except Exception as e:
-    #         print(f"Logo Error: {e}")
-    
     # 语言判断
     lang = data.get('language', 'en')
     if 'zh' in lang.lower() or 'chinese' in lang.lower() or 'cn' in lang.lower():
@@ -289,7 +274,6 @@ def generate_word_report(data, company, product, date, mode, meeting_topic=""):
     # 2. Executive Summary
     summary = data.get('executive_summary', '')
     if summary:
-        # [修改点] 标题启用 keep_with_next
         add_styled_paragraph(doc, exec_title, size=14, bold=True, keep_with_next=True)
         add_styled_paragraph(doc, summary, size=11)
 
@@ -311,7 +295,6 @@ def generate_word_report(data, company, product, date, mode, meeting_topic=""):
                 points = structured[key]
                 display_title = header_map.get(key, key.title())
                 
-                # [修改点] 所有结构化小标题启用 keep_with_next
                 add_styled_paragraph(doc, display_title, size=12, bold=True, keep_with_next=True)
                 
                 if isinstance(points, list):
@@ -323,7 +306,6 @@ def generate_word_report(data, company, product, date, mode, meeting_topic=""):
     # 4. Other Findings
     other_dims = data.get('other_dimensions', {})
     if other_dims:
-        # [修改点] 标题启用 keep_with_next
         add_styled_paragraph(doc, other_title, size=14, bold=True, keep_with_next=True)
         for k, v in other_dims.items():
             if isinstance(v, list):
@@ -339,11 +321,13 @@ def generate_word_report(data, company, product, date, mode, meeting_topic=""):
 
 # --- 核心逻辑类 ---
 class InterviewAnalyzer:
-    def __init__(self, api_key):
+    def __init__(self, api_key, model_name):
         self.api_key = api_key
+        self.model_name = model_name
         try:
             genai.configure(api_key=self.api_key)
-            self.model = genai.GenerativeModel('gemini-3-pro-preview') 
+            # 使用传入的模型名称初始化
+            self.model = genai.GenerativeModel(self.model_name) 
         except Exception as e:
             st.error(f"API Error: {e}")
 
@@ -506,6 +490,17 @@ with st.sidebar:
     
     api_key = st.text_input("Gemini API Key", type="password")
     
+    # --- 🔴 新增：模型选择 (强制只给两个选项) ---
+    render_h1("Model Settings / 模型设置")
+    render_h2("Select Model / 选择模型")
+    
+    selected_model = st.selectbox(
+        "Select Model",
+        ["gemini-2.5-pro", "gemini-3-pro-preview"],
+        index=0,
+        label_visibility="collapsed"
+    )
+    
     # --- 任务模式 (Level 1) ---
     render_h1("Task Mode / 任务模式")
     
@@ -588,9 +583,10 @@ if uploaded_file and st.session_state['analysis_result'] is None:
         
         if valid_input:
             st.audio(uploaded_file, format='audio/mp3')
-            # [修改点] 按钮文本隐藏模型名
+            
             if st.button("Start Analysis / 开始分析", type="primary"):
-                analyzer = InterviewAnalyzer(api_key)
+                # 🔴 修改：传入选定的模型名称
+                analyzer = InterviewAnalyzer(api_key, selected_model)
                 
                 with tempfile.NamedTemporaryFile(delete=False, suffix=f".{uploaded_file.name.split('.')[-1]}") as tmp_file:
                     tmp_file.write(uploaded_file.getvalue())
@@ -601,8 +597,7 @@ if uploaded_file and st.session_state['analysis_result'] is None:
                     audio_resource = analyzer.process_audio(tmp_file_path)
                     
                     if audio_resource:
-                        # [修改点] 状态文本隐藏模型名
-                        st.write("Analyzing... / 正在智能分析...")
+                        st.write(f"Analyzing with {selected_model}... / 正在使用 {selected_model} 分析...")
                         result = analyzer.analyze_interview(audio_resource, interview_mode)
                         
                         if result:
