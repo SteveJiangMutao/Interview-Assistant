@@ -295,23 +295,27 @@ def generate_word_report(data, company, product, date, mode, meeting_topic=""):
                 points = structured[key]
                 display_title = header_map.get(key, key.title())
                 
-                add_styled_paragraph(doc, display_title, size=12, bold=True, keep_with_next=True)
-                
-                if isinstance(points, list):
-                    for point in points:
-                        add_styled_paragraph(doc, point, size=11, is_bullet=True, indent_level=0)
-                else:
-                    add_styled_paragraph(doc, str(points), size=11)
+                # 检查是否有内容或者是否只有"未提及"/"Not mentioned"
+                if points and not (len(points) == 1 and (points[0] == "未提及" or points[0] == "Not mentioned")):
+                    add_styled_paragraph(doc, display_title, size=12, bold=True, keep_with_next=True)
+                    
+                    if isinstance(points, list):
+                        for point in points:
+                            add_styled_paragraph(doc, point, size=11, is_bullet=True, indent_level=0)
+                    else:
+                        add_styled_paragraph(doc, str(points), size=11)
 
     # 4. Other Findings
     other_dims = data.get('other_dimensions', {})
     if other_dims:
         add_styled_paragraph(doc, other_title, size=14, bold=True, keep_with_next=True)
         for k, v in other_dims.items():
-            if isinstance(v, list):
+            if isinstance(v, list) and v and not (len(v) == 1 and (v[0] == "未提及" or v[0] == "Not mentioned")):
+                add_styled_paragraph(doc, k, size=12, bold=True, keep_with_next=True)
                 for point in v:
                     add_styled_paragraph(doc, point, size=11, is_bullet=True)
-            else:
+            elif not isinstance(v, list) and v:
+                add_styled_paragraph(doc, k, size=12, bold=True, keep_with_next=True)
                 add_styled_paragraph(doc, str(v), size=11)
 
     bio = io.BytesIO()
@@ -366,7 +370,23 @@ class InterviewAnalyzer:
             5. Competition Landscape: Market shares of competitors, strengths/weaknesses vs competitors.
             6. Industry Trends: Policy impact, macro environment.
             """
+            
+            # 添加额外维度指导
+            additional_dimensions = """
+            Create additional dimensions in `other_dimensions` for ANY important information that doesn't fit the main framework, especially:
+            - Rebate mechanisms (返利机制)
+            - Promotion methods (推广方式)
+            - Sales performance of specific competing products (竞品销售情况)
+            - Any other valuable insights that don't clearly fit into the main categories
+            
+            Examples of additional dimension keys:
+            - "返利与激励机制" (Rebate & Incentive Mechanisms)
+            - "市场推广活动" (Marketing Promotion Activities)
+            - "竞品销售表现" (Competitor Sales Performance)
+            - "渠道管理策略" (Channel Management Strategy)
+            """
         elif mode == "clinical":
+            # 保持原有部分
             keys_instruction = """
             Use these EXACT keys for `structured_analysis`:
             - `clinical_value` (for Clinical Value)
@@ -382,7 +402,22 @@ class InterviewAnalyzer:
             4. Unmet Needs: Pain points.
             5. Future Expectations: Next-gen features.
             """
+            
+            # 添加额外维度指导
+            additional_dimensions = """
+            Create additional dimensions in `other_dimensions` for ANY important information that doesn't fit the main framework, especially:
+            - Specific clinical procedures or techniques mentioned
+            - Reimbursement information
+            - Hospital procurement processes
+            - Any other valuable insights that don't clearly fit into the main categories
+            
+            Examples of additional dimension keys:
+            - "临床操作技术" (Clinical Techniques)
+            - "医保报销情况" (Reimbursement Status)
+            - "医院采购流程" (Hospital Procurement Process)
+            """
         else: # meeting
+            # 保持原有部分
             keys_instruction = """
             Use these EXACT keys for `structured_analysis`:
             - `meeting_context` (Attendees, Background)
@@ -395,6 +430,15 @@ class InterviewAnalyzer:
             2. Key Discussion Points: COMPREHENSIVE summary of all topics discussed. Do not miss details.
             3. Conclusions & Decisions: Clear list of decisions made.
             4. Action Items: Specific next steps, who is responsible, and deadlines if mentioned.
+            """
+            
+            # 添加额外维度指导
+            additional_dimensions = """
+            Create additional dimensions in `other_dimensions` for ANY important information that doesn't fit the main framework, especially:
+            - Unresolved issues or disagreements
+            - Background information provided during the meeting
+            - Relevant context from previous meetings
+            - Any other valuable insights that don't clearly fit into the main categories
             """
 
         system_prompt = f"""
@@ -429,12 +473,27 @@ class InterviewAnalyzer:
         6.  **COMPREHENSIVENESS**: 
             - For Interviews: Capture every number and logic.
             - For Meetings: **Do not omit any discussion points or follow-ups.**
+            
+        7.  **🚫 STRICT NO-FABRICATION POLICY (EXTREMELY IMPORTANT)**:
+            - **ONLY include information EXPLICITLY mentioned in the audio.**
+            - If a topic is NOT discussed in the audio, DO NOT include it in your analysis.
+            - **WRONG**: Writing "没有专门的销售团队，依托于主要渠道进行销售" when sales team structure was never discussed.
+            - **RIGHT**: Simply OMIT any section where no relevant information was provided.
+            - For each main category that has NO information in the audio, use: ["未提及"] or ["Not mentioned"] depending on language.
+
+        8.  **🔍 CAPTURE ALL VALUABLE INFORMATION**:
+            - Be vigilant about capturing ALL valuable information, even if it doesn't fit neatly into the main framework.
+            - Use the `other_dimensions` section to create ADDITIONAL categories for important information that doesn't fit elsewhere.
+            - Pay special attention to: rebate mechanisms, promotion methods, competitor sales performance, and other valuable insights.
 
         ### FRAMEWORK KEYS:
         {keys_instruction}
 
         ### FRAMEWORK DETAILS:
         {framework_desc}
+        
+        ### ADDITIONAL DIMENSIONS:
+        {additional_dimensions}
 
         ### OUTPUT JSON:
         {{
